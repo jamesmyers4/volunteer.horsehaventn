@@ -37,6 +37,7 @@ enum CheckMethod {
   SMS
   KIOSK
   PWA_TAP
+  WEB_FORM
   ADMIN_ENTRY
   LEGACY_FORM
 }

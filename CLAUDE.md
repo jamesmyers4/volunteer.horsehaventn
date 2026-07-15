@@ -12,6 +12,12 @@ Confirmed while scaffolding (July 2026): **Next.js 16.2.10, React 19.2.4, Prisma
 
 If a future session needs a package bumped further, re-verify against that package's actual current docs before writing code against it from memory — this project got burned once already by assuming Prisma 5/6-era conventions applied.
 
+## A Real Unresolved Risk: Next.js 16.2.6+ Server Actions FormData Regression
+
+Next's May 2026 security release (fixing CVE-2026-23870, a real DoS vulnerability) shipped in 16.2.6 and introduced a separate regression: Server Actions combined with `useActionState` can receive an empty `FormData` object on submit (tracked as vercel/next.js#93754). We're on 16.2.10, four patches past where this was reported, and it's unconfirmed whether a later patch fixed it — this project has no way to verify that from where it was scaffolded.
+
+**Mitigation already in place:** `src/app/checkin/actions.ts` and its form deliberately avoid `useActionState` — plain `<form action={serverAction}>` receiving `FormData` directly, which is outside the exact reproduction case in the bug report (though the underlying cause, described as a change to Flight protocol payload deserialization, could plausibly affect plain Server Actions too — this wasn't confirmed either way). If a form submission results in `formData.get(...)` calls returning `null` for fields that were actually filled in, this regression is the first thing to suspect, not a bug in the handler logic. Check `npm ls next` against the current patched version before spending time debugging application code.
+
 ## Read CONTEXT.md First
 
 Read `CONTEXT.md` before starting any new feature or schema change. It has the reasoning behind every table — most alternate designs that look "obvious" were already considered and rejected for a specific reason documented there. This file is the working conventions; `CONTEXT.md` is the why.
@@ -68,6 +74,7 @@ Logs both `CREATE` (one row per field, `oldValue: null`) and `UPDATE` (field-lev
 - `src/app/api/webhooks/clerk/route.ts` — Clerk webhook handler, creates/links/deactivates `Volunteer` rows on user lifecycle events. Matches admin-entered records by email when linking a fresh signup to an existing pre-entered row rather than creating a duplicate.
 - `src/app/admin/page.tsx` — first protected page, proves `requireRole` works end to end. Treat this as a diagnostic scaffold, not a real admin dashboard — replace once real admin features exist.
 - `src/app/page.tsx` — homepage with Clerk sign-in wired up via `Show`/`SignInButton`/`UserButton`.
+- `src/app/checkin/page.tsx` + `src/app/checkin/actions.ts` — first real feature: volunteers log a shift (date, AM/PM, work type, time in/out, notes). Matches the current Google Form's retrospective single-submission flow (both times entered at once), not real-time tap-in/tap-out — see `CONTEXT.md` §8 for why. Deliberately uses a plain `<form action={...}>` Server Action, not `useActionState` — see the Next.js 16 FormData regression note above.
 - `.github/workflows/ci.yml` — lint, typecheck, Playwright on every PR/push to `main`.
 - `.github/workflows/nightly-backup.yml` — nightly `pg_dump` to R2 plus the Neon keep-alive ping, per `CONTEXT.md` §2.
 - `tests/e2e/smoke.spec.ts` — placeholder; replace with real coverage as features land, don't just add alongside it.

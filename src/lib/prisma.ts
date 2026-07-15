@@ -21,7 +21,8 @@ const trackedModels = [
   "HorseMetric",
   "PastureAssignment",
   "Placement",
-  "CredentialRecord"
+  "CredentialRecord",
+  "CheckIn"
 ] as const
 
 type TrackedModel = (typeof trackedModels)[number]
