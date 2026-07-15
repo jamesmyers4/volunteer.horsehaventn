@@ -20,6 +20,8 @@ jobs:
       - run: npm ci
 
       - run: npm run db:generate
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
       - run: npm run lint
 
@@ -30,5 +32,6 @@ jobs:
       - run: npm run test:e2e
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}

@@ -21,7 +21,7 @@ jobs:
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
           echo "TIMESTAMP=$TIMESTAMP" >> "$GITHUB_ENV"
-          pg_dump "${{ secrets.DATABASE_URL }}" --format=custom --file="backup-$TIMESTAMP.dump"
+          pg_dump "${{ secrets.DIRECT_URL }}" --format=custom --file="backup-$TIMESTAMP.dump"
           gzip "backup-$TIMESTAMP.dump"
 
       - name: Upload to R2

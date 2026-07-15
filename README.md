@@ -11,7 +11,7 @@ npm install
 cp .env.example .env
 ```
 
-Fill in `.env`: `DATABASE_URL` (Neon), Clerk keys, R2 keys, Pusher keys, `RESEND_API_KEY`.
+Fill in `.env`: `DATABASE_URL` and `DIRECT_URL` (Neon — pooled and direct connection strings, respectively; see comments in `.env.example`), Clerk keys, R2 keys, Pusher keys, `RESEND_API_KEY`.
 
 ```
 npm run db:migrate
