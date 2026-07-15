@@ -1,0 +1,534 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  SHIFT_LEAD
+  VOLUNTEER
+  GUEST
+}
+
+enum VolunteerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum HandlingColor {
+  GREEN
+  ORANGE
+  YELLOW
+  BLUE
+  RED
+}
+
+enum ShiftType {
+  AM
+  PM
+}
+
+enum CheckMethod {
+  QR
+  SMS
+  KIOSK
+  PWA_TAP
+  ADMIN_ENTRY
+  LEGACY_FORM
+}
+
+enum HorseStatus {
+  ACTIVE
+  ADOPTED
+  RETURNED
+  DECEASED
+  TRANSFERRED
+}
+
+enum HorseSex {
+  STALLION
+  GELDING
+  MARE
+  COLT
+  FILLY
+  RIDGLING
+  UNKNOWN
+}
+
+enum FeedUnit {
+  SCOOP
+  FLAKE
+  SQUIRT
+  POUR
+  OTHER
+}
+
+enum FeedCategory {
+  MAIN_FEED
+  HAY
+  SUPPLEMENT
+  ADDITIVE
+}
+
+enum CareCategory {
+  MEDICAL
+  SEASONAL
+  GROOMING
+  OTHER
+}
+
+enum WeightContext {
+  ROUTINE
+  ASSESSMENT
+}
+
+enum ChatChannelType {
+  BROADCAST
+  ADMIN
+  SHIFT
+}
+
+enum ChangeLogAction {
+  CREATE
+  UPDATE
+}
+
+model Volunteer {
+  id                    String                    @id @default(cuid())
+  clerkId               String?                   @unique
+  name                  String
+  email                 String?
+  phone                 String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  role                  Role                      @default(VOLUNTEER)
+  status                VolunteerStatus           @default(ACTIVE)
+  tier                  HandlingColor             @default(GREEN)
+  tierUpdatedAt         DateTime?
+  hireDate              DateTime?
+  accessValidFrom       DateTime?
+  accessValidUntil      DateTime?
+  notes                 String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  credentials           CredentialRecord[]
+  regularShifts         RegularShiftAssignment[]
+  checkIns              CheckIn[]                 @relation("VolunteerCheckIns")
+  loggedCheckIns        CheckIn[]                 @relation("LoggedByVolunteer")
+  sentMessages          ChatMessage[]
+
+  @@index([clerkId])
+  @@index([role])
+  @@index([status])
+}
+
+model CredentialType {
+  id        String             @id @default(cuid())
+  name      String
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  records   CredentialRecord[]
+}
+
+model CredentialRecord {
+  id               String         @id @default(cuid())
+  volunteerId      String
+  credentialTypeId String
+  completedDate    DateTime
+  expiresAt        DateTime?
+  score            Int?
+  fileRef          String?
+  notes            String?
+  notifiedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  volunteer        Volunteer      @relation(fields: [volunteerId], references: [id])
+  credentialType   CredentialType @relation(fields: [credentialTypeId], references: [id])
+
+  @@index([volunteerId])
+  @@index([credentialTypeId])
+  @@index([expiresAt])
+}
+
+model RegularShiftAssignment {
+  id          String    @id @default(cuid())
+  volunteerId String
+  dayOfWeek   Int
+  shiftType   ShiftType
+  active      Boolean   @default(true)
+  startDate   DateTime
+  endDate     DateTime?
+  createdAt   DateTime  @default(now())
+  volunteer   Volunteer @relation(fields: [volunteerId], references: [id])
+
+  @@index([volunteerId])
+  @@index([dayOfWeek, shiftType])
+}
+
+model Shift {
+  id        String    @id @default(cuid())
+  date      DateTime
+  type      ShiftType
+  createdAt DateTime  @default(now())
+  checkIns  CheckIn[]
+
+  @@unique([date, type])
+}
+
+model WorkType {
+  id        String    @id @default(cuid())
+  name      String
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  checkIns  CheckIn[]
+}
+
+model CheckIn {
+  id             String       @id @default(cuid())
+  volunteerId    String
+  shiftId        String
+  workTypeId     String
+  checkInAt      DateTime
+  checkOutAt     DateTime?
+  checkInMethod  CheckMethod?
+  checkOutMethod CheckMethod?
+  loggedById     String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  volunteer      Volunteer    @relation("VolunteerCheckIns", fields: [volunteerId], references: [id])
+  shift          Shift        @relation(fields: [shiftId], references: [id])
+  workType       WorkType     @relation(fields: [workTypeId], references: [id])
+  loggedBy       Volunteer?   @relation("LoggedByVolunteer", fields: [loggedById], references: [id])
+
+  @@index([volunteerId])
+  @@index([shiftId])
+  @@index([workTypeId])
+  @@index([checkInAt])
+}
+
+model Horse {
+  id                     String                   @id @default(cuid())
+  name                   String
+  intakeDate             DateTime?
+  status                 HorseStatus              @default(ACTIVE)
+  sex                    HorseSex                 @default(UNKNOWN)
+  spayed                 Boolean                  @default(false)
+  legalCase              Boolean                  @default(false)
+  caseReference          String?
+  requiredHandlerColor   HandlingColor            @default(GREEN)
+  handlingNotes          String?
+  notes                  String?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  photos                 HorsePhoto[]
+  placements             Placement[]
+  feedingBaselines       FeedingBaseline[]
+  medicationRegimens     MedicationRegimen[]
+  careEntries            CareEntry[]
+  healthIssues           HealthIssue[]
+  recurringCareSchedules RecurringCareSchedule[]
+  metrics                HorseMetric[]
+  weightEntries          WeightEntry[]
+  pastureAssignments     PastureAssignment[]
+  donations              DonationInKind[]
+
+  @@index([status])
+  @@index([legalCase])
+}
+
+model HorsePhoto {
+  id                String    @id @default(cuid())
+  horseId           String
+  url               String
+  type              String
+  isPrimary         Boolean   @default(false)
+  takenAt           DateTime?
+  uploadedBy        String?
+  relatedEntityType String?
+  relatedEntityId   String?
+  createdAt         DateTime  @default(now())
+  horse             Horse     @relation(fields: [horseId], references: [id])
+
+  @@index([horseId])
+  @@index([relatedEntityType, relatedEntityId])
+}
+
+model Placement {
+  id               String    @id @default(cuid())
+  horseId          String
+  adopterName      String
+  adopterContact   String?
+  placedDate       DateTime
+  returnedDate     DateTime?
+  followUpCadence  Int?
+  nextFollowUpDate DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  horse            Horse     @relation(fields: [horseId], references: [id])
+
+  @@index([horseId])
+  @@index([nextFollowUpDate])
+}
+
+model FeedType {
+  id          String            @id @default(cuid())
+  name        String
+  defaultUnit FeedUnit
+  category    FeedCategory
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  baselines   FeedingBaseline[]
+}
+
+model FeedingBaseline {
+  id              String            @id @default(cuid())
+  horseId         String
+  feedTypeId      String
+  shift           ShiftType
+  amount          Decimal           @db.Decimal(4, 2)
+  requiresSoaking Boolean           @default(true)
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  horse           Horse             @relation(fields: [horseId], references: [id])
+  feedType        FeedType          @relation(fields: [feedTypeId], references: [id])
+  overrides       FeedingOverride[]
+
+  @@index([horseId])
+  @@index([feedTypeId])
+}
+
+model FeedingOverride {
+  id                String          @id @default(cuid())
+  feedingBaselineId String
+  date              DateTime
+  amount            Decimal?        @db.Decimal(4, 2)
+  reason            String?
+  changedBy         String
+  notes             String?
+  createdAt         DateTime        @default(now())
+  feedingBaseline   FeedingBaseline @relation(fields: [feedingBaselineId], references: [id])
+
+  @@index([feedingBaselineId])
+  @@index([date])
+}
+
+model MedicationRegimen {
+  id        String          @id @default(cuid())
+  horseId   String
+  drugName  String
+  dose      String
+  route     String?
+  frequency String
+  startDate DateTime
+  endDate   DateTime?
+  notes     String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  horse     Horse           @relation(fields: [horseId], references: [id])
+  logs      MedicationLog[]
+
+  @@index([horseId])
+}
+
+model MedicationLog {
+  id                  String             @id @default(cuid())
+  medicationRegimenId String
+  date                DateTime
+  administered        Boolean
+  administeredBy      String
+  notes               String?
+  createdAt           DateTime           @default(now())
+  medicationRegimen   MedicationRegimen  @relation(fields: [medicationRegimenId], references: [id])
+
+  @@index([medicationRegimenId])
+  @@index([date])
+}
+
+model CareType {
+  id                 String                   @id @default(cuid())
+  name               String
+  category           CareCategory
+  active             Boolean                  @default(true)
+  createdAt          DateTime                 @default(now())
+  careEntries        CareEntry[]
+  recurringSchedules RecurringCareSchedule[]
+}
+
+model CareEntry {
+  id                   String       @id @default(cuid())
+  horseId              String
+  careTypeId           String
+  date                 DateTime
+  notes                String?
+  performedBy          String
+  relatedHealthIssueId String?
+  createdAt            DateTime     @default(now())
+  horse                Horse        @relation(fields: [horseId], references: [id])
+  careType             CareType     @relation(fields: [careTypeId], references: [id])
+  healthIssue          HealthIssue? @relation(fields: [relatedHealthIssueId], references: [id])
+
+  @@index([horseId])
+  @@index([careTypeId])
+  @@index([date])
+  @@index([relatedHealthIssueId])
+}
+
+model HealthIssue {
+  id           String      @id @default(cuid())
+  horseId      String
+  description  String
+  startDate    DateTime
+  resolvedDate DateTime?
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  horse        Horse       @relation(fields: [horseId], references: [id])
+  careEntries  CareEntry[]
+
+  @@index([horseId])
+  @@index([active])
+}
+
+model RecurringCareSchedule {
+  id                String    @id @default(cuid())
+  horseId           String
+  careTypeId        String
+  cadenceDays       Int?
+  lastCompletedDate DateTime?
+  nextDueDate       DateTime?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  horse             Horse     @relation(fields: [horseId], references: [id])
+  careType          CareType  @relation(fields: [careTypeId], references: [id])
+
+  @@index([horseId])
+  @@index([nextDueDate])
+}
+
+model MetricType {
+  id        String        @id @default(cuid())
+  name      String
+  unit      String
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  metrics   HorseMetric[]
+}
+
+model HorseMetric {
+  id           String     @id @default(cuid())
+  horseId      String
+  metricTypeId String
+  value        Decimal    @db.Decimal(4, 1)
+  date         DateTime
+  recordedBy   String
+  notes        String?
+  createdAt    DateTime   @default(now())
+  horse        Horse      @relation(fields: [horseId], references: [id])
+  metricType   MetricType @relation(fields: [metricTypeId], references: [id])
+
+  @@index([horseId])
+  @@index([metricTypeId])
+  @@index([date])
+}
+
+model WeightEntry {
+  id         String        @id @default(cuid())
+  horseId    String
+  date       DateTime
+  weight     Decimal       @db.Decimal(6, 1)
+  context    WeightContext @default(ROUTINE)
+  recordedBy String
+  notes      String?
+  createdAt  DateTime      @default(now())
+  horse      Horse         @relation(fields: [horseId], references: [id])
+
+  @@index([horseId])
+  @@index([date])
+}
+
+model Field {
+  id             String               @id @default(cuid())
+  code           String               @unique
+  description    String?
+  boundaryPoints Json?
+  turnoutOrder   Int?
+  bringInOrder   Int?
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  assignments    PastureAssignment[]
+}
+
+model PastureAssignment {
+  id        String    @id @default(cuid())
+  horseId   String
+  fieldId   String
+  startDate DateTime
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+  horse     Horse     @relation(fields: [horseId], references: [id])
+  field     Field     @relation(fields: [fieldId], references: [id])
+
+  @@index([horseId])
+  @@index([fieldId])
+  @@index([endDate])
+}
+
+model DonationInKind {
+  id              String   @id @default(cuid())
+  item            String
+  donor           String?
+  dateReceived    DateTime
+  linkedHorseId   String?
+  linkedProjectId String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  horse           Horse?   @relation(fields: [linkedHorseId], references: [id])
+
+  @@index([linkedHorseId])
+}
+
+model ChatChannel {
+  id        String          @id @default(cuid())
+  type      ChatChannelType
+  name      String
+  createdAt DateTime        @default(now())
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  channelId String
+  senderId  String
+  body      String
+  createdAt DateTime    @default(now())
+  channel   ChatChannel @relation(fields: [channelId], references: [id])
+  sender    Volunteer   @relation(fields: [senderId], references: [id])
+
+  @@index([channelId])
+  @@index([senderId])
+}
+
+model ChangeLog {
+  id         String          @id @default(cuid())
+  entityType String
+  entityId   String
+  field      String?
+  oldValue   String?
+  newValue   String?
+  changedBy  String
+  note       String?
+  action     ChangeLogAction
+  createdAt  DateTime        @default(now())
+
+  @@index([entityType, entityId])
+  @@index([changedBy])
+  @@index([createdAt])
+}
