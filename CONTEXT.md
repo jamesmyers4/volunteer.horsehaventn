@@ -178,6 +178,7 @@ Carried over from the original spec, unresolved by this schema session because t
 - Exact tenure timelines for Green→Orange→Yellow (approximate only so far — need the actual written schedule)
 - Backup budget: not applicable — self-managed nightly export is the committed path regardless of Lori's preference here
 - Native mobile app: worth the investment long-term, or is responsive web sufficient?
+- Should Shift Lead be able to open/resolve a `HealthIssue` and log `MedicationLog` entries? §5 only explicitly grants Shift Lead write access to `CareEntry`/`FeedingOverride`/`CheckIn`. When medication and care/health tracking were built, Shift Lead was given the same access to these two as an inferred extension of that pattern (shift leads are the ones present to give medication and spot new issues; admins aren't at every shift) — not a decision anyone at Horse Haven actually made. Confirm or correct; see `CLAUDE.md`'s Permissions Quick Reference for where this is encoded in code.
 
 ## 17. Barn Operational Reference (from Volunteer Manual + Field Map)
 

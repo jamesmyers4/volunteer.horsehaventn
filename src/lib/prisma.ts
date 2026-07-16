@@ -15,6 +15,7 @@ const trackedModels = [
   "FeedingBaseline",
   "FeedingOverride",
   "MedicationRegimen",
+  "MedicationLog",
   "CareEntry",
   "HealthIssue",
   "WeightEntry",

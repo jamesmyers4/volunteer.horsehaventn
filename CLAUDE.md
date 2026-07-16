@@ -41,7 +41,7 @@ Next.js (App Router) + TypeScript, Tailwind CSS, Postgres (Neon) + Prisma, Clerk
 
 Already built in `src/lib/prisma.ts` — `withChangeLog(base, changedBy, note?)` wraps the base Prisma client in a Client Extension that intercepts `create`/`update` on tracked models and writes field-level diffs automatically. Every server action or route handler that writes to a tracked model should call `withChangeLog(prisma, currentVolunteer.id)` (from `src/lib/auth.ts`'s `requireVolunteer()`) rather than writing to `prisma` directly, and never call `prisma.changeLog.create()` by hand — if you find yourself doing that, the write should go through the extension instead.
 
-Tracked models (per `CONTEXT.md` §4): `Horse`, `Volunteer`, `FeedingBaseline`, `FeedingOverride`, `MedicationRegimen`, `CareEntry`, `HealthIssue`, `WeightEntry`, `HorseMetric`, `PastureAssignment`, `Placement`, `CredentialRecord`. Add new models to the `trackedModels` array in `src/lib/prisma.ts` when they're introduced, not to a separate list — there is only one source of truth for what's tracked.
+Tracked models (per `CONTEXT.md` §4): `Horse`, `Volunteer`, `FeedingBaseline`, `FeedingOverride`, `MedicationRegimen`, `MedicationLog`, `CareEntry`, `HealthIssue`, `WeightEntry`, `HorseMetric`, `PastureAssignment`, `Placement`, `CredentialRecord`. Add new models to the `trackedModels` array in `src/lib/prisma.ts` when they're introduced, not to a separate list — there is only one source of truth for what's tracked.
 
 Logs both `CREATE` (one row per field, `oldValue: null`) and `UPDATE` (field-level diff only, not whole-record snapshots). `updatedAt` is deliberately excluded from diffing since it changes on every write and would just be noise.
 
@@ -58,11 +58,13 @@ Logs both `CREATE` (one row per field, `oldValue: null`) and `UPDATE` (field-lev
 | Role | Can write | Read scope |
 | --- | --- | --- |
 | ADMIN | Everything | Everything |
-| SHIFT_LEAD | `CareEntry`, `FeedingOverride`, `CheckIn` (their shift) | All shifts/check-ins org-wide |
+| SHIFT_LEAD | `CareEntry`, `FeedingOverride`, `CheckIn` (their shift), `MedicationLog`, `HealthIssue` (open/resolve) | All shifts/check-ins org-wide |
 | VOLUNTEER | Own `CheckIn` | Own data, shift-relevant feeding/pasture info |
 | GUEST | Nothing by default | Time-boxed, read-only |
 
-`SHIFT_LEAD` and `VOLUNTEER` never get write access to `FeedingBaseline`, `Horse` core fields, `Volunteer` records/roles, or `PastureAssignment` — those stay Admin-only regardless of how the UI is framed.
+`SHIFT_LEAD` and `VOLUNTEER` never get write access to `FeedingBaseline`, `Horse` core fields, `Volunteer` records/roles, or `PastureAssignment` — those stay Admin-only regardless of how the UI is framed. `MedicationRegimen` (the standing plan, as opposed to `MedicationLog`'s daily entries) is Admin-only too, same split as `FeedingBaseline`/`FeedingOverride`.
+
+`SHIFT_LEAD` write access to `MedicationLog` and `HealthIssue` was a judgment call made when building those features (not an explicit decision from Lori/Ashley) — extended from the existing `FeedingOverride`/`CareEntry` pattern on the reasoning that shift leads are the ones actually present to give medication and notice new issues, and admins aren't at every shift. Worth confirming for real; see `CONTEXT.md` §16.
 
 ## Repo Layout — What Already Exists
 
@@ -78,6 +80,8 @@ Logs both `CREATE` (one row per field, `oldValue: null`) and `UPDATE` (field-lev
 - `src/app/horses/` — Horse core CRUD. `page.tsx` (list, defaults to ACTIVE status only via `?status=all` toggle), `new/page.tsx` + `[id]/page.tsx` + `[id]/edit/page.tsx`, `actions.ts` (`createHorse`/`updateHorse`, both Admin-only per the permission table), `HorseFormFields.tsx` (shared field set between create/edit). `[id]/page.tsx` also renders the photo gallery and upload form.
 - `src/lib/r2.ts` + `src/app/api/horses/[id]/photos/route.ts` — photo upload. **Deliberately a Route Handler with a plain `<form method="post" encType="multipart/form-data">`, not a Server Action.** Server Actions cap request bodies at 1MB by default, and the documented `bodySizeLimit` config option has a long history of not reliably working across Next.js versions and hosts (see open GitHub discussions). Current official guidance is explicit: use a Route Handler for file uploads, not a Server Action. Phone camera photos routinely exceed 1MB, so this wasn't optional. Uses `NextResponse.redirect()`, not `redirect()` from `next/navigation` — the latter only works inside the React render pipeline (Server Components/Actions) and throws if called from a plain Route Handler. `HorsePhoto` is deliberately **not** in the ChangeLog tracked-models list — photos are uploaded once and rarely corrected in place (unlike a horse's status or a check-in time), and the row already captures who/when directly (`uploadedBy`, `takenAt`) without needing field-diff history.
 - `src/app/horses/[id]/feeding-actions.ts` — feeding baseline/override, rendered as part of `[id]/page.tsx` rather than a separate route (it's a small enough surface not to warrant its own page). `createFeedingBaseline` is Admin-only; `createFeedingOverride` is Admin or Shift Lead, matching the permission table. "Today's override" is queried per baseline row (`overrides: { where: { date: { gte: today, lt: tomorrow } } } }`) and merged into the same table rather than a separate section — this is the beginning of the "one row per horse showing feed/meds/etc at a glance" dashboard concept from `CONTEXT.md` §8, though the full cross-entity dashboard is still a later slice.
+- `src/app/horses/[id]/medication-actions.ts` — same shape as feeding: `createMedicationRegimen` (Admin-only) + `logMedicationAdministered` (Admin or Shift Lead), plus `endMedicationRegimen` (Admin-only, sets `endDate`) since regimens actually end, unlike `FeedingBaseline`. `[id]/page.tsx` only lists regimens with no `endDate` or `endDate >= today`, joined with today's `MedicationLog` the same way feeding joins today's override.
+- `src/app/horses/[id]/care-actions.ts` — `createCareEntry` (Admin or Shift Lead) plus `createHealthIssue`/`resolveHealthIssue` (also Admin or Shift Lead — see the Permissions Quick Reference note on this being a judgment call). `[id]/page.tsx` shows open health issues and the last 15 care entries, with a select to tie a new care entry to an already-open issue.
 - `.github/workflows/ci.yml` — lint, typecheck, Playwright on every PR/push to `main`.
 - `.github/workflows/nightly-backup.yml` — nightly `pg_dump` to R2 plus the Neon keep-alive ping, per `CONTEXT.md` §2.
 - `tests/e2e/smoke.spec.ts` — placeholder; replace with real coverage as features land, don't just add alongside it.

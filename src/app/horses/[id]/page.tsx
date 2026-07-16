@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 import { requireVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { createFeedingBaseline, createFeedingOverride } from "./feeding-actions"
+import { createMedicationRegimen, endMedicationRegimen, logMedicationAdministered } from "./medication-actions"
+import { createCareEntry, createHealthIssue, resolveHealthIssue } from "./care-actions"
 
 export default async function HorseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const volunteer = await requireVolunteer()
@@ -25,8 +27,37 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
 
   const feedTypes = await prisma.feedType.findMany({ where: { active: true }, orderBy: { name: "asc" } })
 
+  const medicationRegimens = await prisma.medicationRegimen.findMany({
+    where: { horseId: id, OR: [{ endDate: null }, { endDate: { gte: today } }] },
+    include: { logs: { where: { date: { gte: today, lt: tomorrow } } } },
+    orderBy: { drugName: "asc" }
+  })
+
+  const careTypes = await prisma.careType.findMany({ where: { active: true }, orderBy: { name: "asc" } })
+
+  const careEntries = await prisma.careEntry.findMany({
+    where: { horseId: id },
+    include: { careType: true, healthIssue: true },
+    orderBy: { date: "desc" },
+    take: 15
+  })
+
+  const healthIssues = await prisma.healthIssue.findMany({
+    where: { horseId: id, active: true },
+    orderBy: { startDate: "desc" }
+  })
+
+  const performerIds = Array.from(
+    new Set([...medicationRegimens.flatMap((r) => r.logs.map((l) => l.administeredBy)), ...careEntries.map((e) => e.performedBy)])
+  )
+  const performers = await prisma.volunteer.findMany({ where: { id: { in: performerIds } } })
+  const performerNames = new Map(performers.map((p) => [p.id, p.name]))
+
   const canManageBaseline = volunteer.role === "ADMIN"
   const canLogOverride = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
+  const canManageMedicationRegimen = volunteer.role === "ADMIN"
+  const canLogMedication = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
+  const canManageCare = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-8">
@@ -167,6 +198,155 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
               Add baseline
             </button>
           </form>
+        )}
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Medication</h2>
+        <table className="w-full max-w-2xl text-left text-sm">
+          <thead>
+            <tr className="border-b">
+              <th className="py-2">Drug</th>
+              <th className="py-2">Dose</th>
+              <th className="py-2">Route</th>
+              <th className="py-2">Frequency</th>
+              <th className="py-2">Today</th>
+            </tr>
+          </thead>
+          <tbody>
+            {medicationRegimens.map((regimen) => {
+              const todayLog = regimen.logs[0]
+              const logForRegimen = logMedicationAdministered.bind(null, regimen.id, horse.id)
+              const endForRegimen = endMedicationRegimen.bind(null, regimen.id, horse.id)
+              return (
+                <tr key={regimen.id} className="border-b align-top">
+                  <td className="py-2">{regimen.drugName}</td>
+                  <td className="py-2">{regimen.dose}</td>
+                  <td className="py-2">{regimen.route ?? "—"}</td>
+                  <td className="py-2">{regimen.frequency}</td>
+                  <td className="py-2">
+                    {todayLog ? (
+                      <span>
+                        {todayLog.administered ? "Given" : "Missed"} — {performerNames.get(todayLog.administeredBy) ?? todayLog.administeredBy}
+                        {todayLog.notes ? ` (${todayLog.notes})` : ""}
+                      </span>
+                    ) : canLogMedication ? (
+                      <form action={logForRegimen} className="flex flex-col gap-1">
+                        <div className="flex gap-3">
+                          <label className="flex items-center gap-1">
+                            <input type="radio" name="administered" value="true" defaultChecked required />
+                            Given
+                          </label>
+                          <label className="flex items-center gap-1">
+                            <input type="radio" name="administered" value="false" required />
+                            Missed
+                          </label>
+                        </div>
+                        <input type="text" name="notes" placeholder="notes" className="w-40 rounded border px-1 py-0.5 text-xs" />
+                        <button type="submit" className="w-fit rounded border px-2 py-0.5 text-xs">
+                          Log for today
+                        </button>
+                      </form>
+                    ) : (
+                      "—"
+                    )}
+                    {canManageMedicationRegimen && (
+                      <form action={endForRegimen}>
+                        <button type="submit" className="mt-1 w-fit text-xs text-gray-500 underline">
+                          End regimen
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {medicationRegimens.length === 0 && <p className="text-sm text-gray-500">No active medication regimens.</p>}
+        {canManageMedicationRegimen && (
+          <form action={createMedicationRegimen.bind(null, horse.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+            <h3 className="text-xs font-semibold text-gray-500">Add medication regimen</h3>
+            <input type="text" name="drugName" placeholder="drug name" required className="rounded border px-2 py-1" />
+            <input type="text" name="dose" placeholder="dose" required className="rounded border px-2 py-1" />
+            <input type="text" name="route" placeholder="route (optional)" className="rounded border px-2 py-1" />
+            <input type="text" name="frequency" placeholder="frequency" required className="rounded border px-2 py-1" />
+            <input type="text" name="notes" placeholder="notes" className="rounded border px-2 py-1" />
+            <button type="submit" className="w-fit rounded bg-black px-4 py-2 text-xs text-white">
+              Add regimen
+            </button>
+          </form>
+        )}
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Care & Health</h2>
+        <div className="flex flex-col gap-2">
+          <h3 className="text-xs font-semibold text-gray-500">Open health issues</h3>
+          {healthIssues.length === 0 && <p className="text-sm text-gray-500">None open.</p>}
+          <ul className="flex flex-col gap-2 text-sm">
+            {healthIssues.map((issue) => {
+              const resolveForIssue = resolveHealthIssue.bind(null, issue.id, horse.id)
+              return (
+                <li key={issue.id} className="flex items-center justify-between gap-2 border-b pb-1">
+                  <span>
+                    {issue.description} <span className="text-gray-500">(since {issue.startDate.toDateString()})</span>
+                  </span>
+                  {canManageCare && (
+                    <form action={resolveForIssue}>
+                      <button type="submit" className="text-xs text-gray-500 underline">
+                        Resolve
+                      </button>
+                    </form>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+        <div className="flex flex-col gap-2">
+          <h3 className="text-xs font-semibold text-gray-500">Recent care entries</h3>
+          {careEntries.length === 0 && <p className="text-sm text-gray-500">No care entries yet.</p>}
+          <ul className="flex flex-col gap-1 text-sm">
+            {careEntries.map((entry) => (
+              <li key={entry.id} className="border-b pb-1">
+                <span className="text-gray-500">{entry.date.toDateString()}</span> — {entry.careType.name} — {performerNames.get(entry.performedBy) ?? entry.performedBy}
+                {entry.healthIssue ? ` (${entry.healthIssue.description})` : ""}
+                {entry.notes ? `: ${entry.notes}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+        {canManageCare && (
+          <div className="flex flex-wrap gap-6">
+            <form action={createCareEntry.bind(null, horse.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+              <h3 className="text-xs font-semibold text-gray-500">Log care entry</h3>
+              <select name="careTypeId" required className="rounded border px-2 py-1">
+                {careTypes.map((careType) => (
+                  <option key={careType.id} value={careType.id}>
+                    {careType.name}
+                  </option>
+                ))}
+              </select>
+              <select name="relatedHealthIssueId" className="rounded border px-2 py-1">
+                <option value="">Not related to an open issue</option>
+                {healthIssues.map((issue) => (
+                  <option key={issue.id} value={issue.id}>
+                    {issue.description}
+                  </option>
+                ))}
+              </select>
+              <input type="text" name="notes" placeholder="notes" className="rounded border px-2 py-1" />
+              <button type="submit" className="w-fit rounded bg-black px-4 py-2 text-xs text-white">
+                Log entry
+              </button>
+            </form>
+            <form action={createHealthIssue.bind(null, horse.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+              <h3 className="text-xs font-semibold text-gray-500">Open health issue</h3>
+              <input type="text" name="description" placeholder="description" required className="rounded border px-2 py-1" />
+              <button type="submit" className="w-fit rounded border px-4 py-2 text-xs">
+                Open issue
+              </button>
+            </form>
+          </div>
         )}
       </section>
     </main>

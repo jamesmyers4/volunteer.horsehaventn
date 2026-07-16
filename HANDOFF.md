@@ -2,11 +2,11 @@
 
 Horse Haven of Tennessee Ops Platform. This document is for picking the project back up cleanly — either you (James) starting a new session, or a future Claude instance getting oriented fast. It's a narrative/status log, not architecture — for *why* the schema looks the way it does, read `CONTEXT.md`. For coding conventions and version-specific traps, read `CLAUDE.md`. This file is "what actually happened and what state things are in."
 
-Last updated: July 16, 2026, end of the first build session (schema design through four working feature slices).
+Last updated: July 16, 2026. First build session (schema design through four working feature slices) plus a same-day follow-up session that added medication and care/health tracking.
 
 ## Current State, in One Paragraph
 
-The repo is scaffolded, connected to a real Neon database, real Clerk auth, and a real R2 bucket — none of this is theoretical, all of it has been exercised end to end with real data. Four Phase 1 slices are built and verified working: authentication (Clerk → webhook → `Volunteer` row → role-based access), check-in (volunteers logging shifts), horse core records with photo upload, and feeding (baseline + daily override). Nothing is deployed yet — this has all been run and tested via `npm run dev` locally, tunneled through ngrok only for the Clerk webhook. Not yet on Vercel.
+The repo is scaffolded, connected to a real Neon database, real Clerk auth, and a real R2 bucket — none of this is theoretical, all of it has been exercised end to end with real data. Six Phase 1 slices are built and verified working: authentication (Clerk → webhook → `Volunteer` row → role-based access), check-in (volunteers logging shifts), horse core records with photo upload, feeding (baseline + daily override), medication (regimen + daily log), and care/health (care entries + ongoing health issues). Nothing is deployed yet — this has all been run and tested via `npm run dev` locally, tunneled through ngrok only for the Clerk webhook. Not yet on Vercel.
 
 ## Commit History (8 commits on `main`, all pushed)
 
@@ -36,9 +36,11 @@ src/app/api/webhooks/clerk/route.ts           — Clerk user lifecycle webhook
 src/app/checkin/actions.ts
 src/app/checkin/page.tsx
 src/app/horses/HorseFormFields.tsx            — shared create/edit field set
+src/app/horses/[id]/care-actions.ts            — createCareEntry/createHealthIssue/resolveHealthIssue
 src/app/horses/[id]/edit/page.tsx
 src/app/horses/[id]/feeding-actions.ts
-src/app/horses/[id]/page.tsx                  — detail page: core fields, photos, feeding
+src/app/horses/[id]/medication-actions.ts     — createMedicationRegimen/endMedicationRegimen/logMedicationAdministered
+src/app/horses/[id]/page.tsx                  — detail page: core fields, photos, feeding, medication, care/health
 src/app/horses/actions.ts                     — createHorse/updateHorse
 src/app/horses/new/page.tsx
 src/app/horses/page.tsx                       — list, defaults to ACTIVE only
@@ -52,7 +54,7 @@ src/proxy.ts                                  — Clerk middleware (Next 16 nami
 
 ## What's Actually Live in Neon Right Now
 
-Real data exists from testing, not just seed data: your own `Volunteer` row (role `ADMIN`, tier `GREEN`), at least one test `Horse` with uploaded photos, at least one `CheckIn`, at least one `FeedingBaseline` + `FeedingOverride`, and a substantial `ChangeLog` history from all of the above (every create/update on a tracked model logs field-by-field, so the row count there is much higher than it looks at first glance — that's expected, see `CLAUDE.md`).
+Real data exists from testing, not just seed data: your own `Volunteer` row (role `ADMIN`, tier `GREEN`), at least one test `Horse` with uploaded photos, at least one `CheckIn`, at least one `FeedingBaseline` + `FeedingOverride`, and a substantial `ChangeLog` history from all of the above (every create/update on a tracked model logs field-by-field, so the row count there is much higher than it looks at first glance — that's expected, see `CLAUDE.md`). Medication and care/health writes were verified against this same live DB with a throwaway script (create → read the exact page.tsx query shapes → update → hard-delete the test rows via raw Prisma, bypassing `withChangeLog` on purpose so no test noise landed in `ChangeLog`) — no leftover test data, real `Horse`/`Volunteer` rows untouched.
 
 Seeded lookup tables (via `npm run db:seed`, already run): `CredentialType`, `FeedType`, `CareType`, `WorkType`, `MetricType`, `Field` (all 14 field codes from the map).
 
@@ -85,15 +87,24 @@ This stack runs newer package versions than typical AI training data assumes, an
 - **R2's Public Development URL** should become a real custom domain before this goes live for actual volunteer use — see the Cloudflare R2 row above.
 - **No Case File Export yet** — the legal-defensibility data (ChangeLog, append-only patterns) is all being captured correctly as features get built, but the actual export report UI is still a Phase 2 item per `CONTEXT.md` §15, pull forward if a real legal need becomes active.
 
+## Medication + Care/Health Tracking — Built This Session
+
+Both slices landed the same way feeding did: no schema changes needed (`MedicationRegimen`/`MedicationLog` and `CareEntry`/`CareType`/`HealthIssue` were already fully modeled in `prisma/schema.prisma` from the original grill session), just new Server Actions plus two new sections on `src/app/horses/[id]/page.tsx`.
+
+- **Medication** (`src/app/horses/[id]/medication-actions.ts`): `createMedicationRegimen` is Admin-only, mirroring `FeedingBaseline`. `logMedicationAdministered` is Admin or Shift Lead, mirroring `FeedingOverride` — one log row per regimen per day, given/missed with notes. Added `endMedicationRegimen` (Admin-only, sets `endDate`) since, unlike `FeedingBaseline`, `MedicationRegimen` actually has an end date and regimens do run out — the horse detail page only lists regimens with no `endDate` or `endDate >= today`.
+- **Care/Health** (`src/app/horses/[id]/care-actions.ts`): `createCareEntry` is Admin or Shift Lead — this one's explicit in `CLAUDE.md`'s permission table already. `createHealthIssue`/`resolveHealthIssue` aren't in that table (only `CareEntry`/`FeedingOverride`/`CheckIn` are listed for Shift Lead), so this was a judgment call: gave Shift Lead the same access as `CareEntry` itself, on the reasoning that opening/closing a health issue is just bookkeeping around the care entries they're already trusted to log, not a new category of authority. Flagging this so it can be corrected if that's wrong — worth a real answer from Lori/Ashley the way the other open items in `CONTEXT.md` §16 are tracked.
+- **Fixed a `trackedModels` gap while in there:** `MedicationLog` wasn't in `src/lib/prisma.ts`'s `trackedModels` array even though it's the exact same "daily log entry" shape as `FeedingOverride`, which is tracked. `MedicationRegimen`, `CareEntry`, and `HealthIssue` were already in the array from the original schema session (pre-added, unused until now) — `MedicationLog` looks like it was just missed at the time, not a deliberate exclusion (there's no `CONTEXT.md`/`CLAUDE.md` reasoning for excluding it the way there is for `HorsePhoto`). Added it. `CareType` stays untracked, correctly — it's a lookup table like `FeedType`, not a data entity.
+- Verified directly against the live Neon DB (see above) rather than through the browser — no `chromium-cli` or equivalent browser automation tool was available in this environment, and driving a real Clerk sign-in headlessly wasn't practical. `npx tsc --noEmit` and `npm run lint` both pass clean (matching what CI actually checks — there's no `next build` step in `.github/workflows/ci.yml`). **Still worth a manual click-through in a real browser before trusting this fully** — the query logic and write paths are verified, but the actual rendered UI (form layout, the "End regimen" link sitting inside the same table cell, etc.) has not been visually confirmed.
+- No E2E coverage added, consistent with feeding (which also shipped without Playwright coverage) — `tests/e2e/` still only has the placeholder smoke test, and there's no Clerk-authenticated test fixture yet for any protected page. Worth setting up before this drifts further from `CLAUDE.md`'s stated testing priorities.
+
 ## What's Next
 
 Per `CONTEXT.md`'s Phase 1 priority order, in the order that makes sense to keep building:
 
-1. **Medication tracking** (`MedicationRegimen` + `MedicationLog`) — same standing-plan-plus-daily-log shape as feeding, should move faster than feeding did since the pattern's now proven twice (baseline/override → regimen/log is nearly the same code shape).
-2. **Care/health tracking** (`CareEntry`, `CareType`, `HealthIssue`) — broader than medication, covers routine/seasonal care (fly masks, blanket changes, grooming) alongside medical entries, plus grouping repeat checks on an ongoing issue (a wound being monitored over several visits).
-3. **Metrics** (`HorseMetric`, `WeightEntry`) — Henneke Body Condition Score and height tracking. Lower complexity than the above, mostly a log-entry form.
-4. **Field/Pasture assignment** (`PastureAssignment`) — moving horses between fields. The interactive drone-photo map itself is still Phase 2 (no photo/map exists to build it against yet), but the assignment tracking and a plain list view are Phase 1.
-5. Eventually: the cross-entity daily dashboard view (one row per horse showing feed/meds/care/notes at a glance) that `CONTEXT.md` §8 describes — makes the most sense once medication and care exist alongside feeding, so there's actually three things to show per row instead of one.
+1. **Metrics** (`HorseMetric`, `WeightEntry`) — Henneke Body Condition Score and height tracking. Lower complexity than medication/care, mostly a log-entry form.
+2. **Field/Pasture assignment** (`PastureAssignment`) — moving horses between fields. The interactive drone-photo map itself is still Phase 2 (no photo/map exists to build it against yet), but the assignment tracking and a plain list view are Phase 1.
+3. Eventually: the cross-entity daily dashboard view (one row per horse showing feed/meds/care/notes at a glance) that `CONTEXT.md` §8 describes — now unblocked, since feeding, medication, and care all exist and there's actually three things to show per row instead of one.
+4. A Clerk-authenticated Playwright fixture, so E2E coverage can actually start landing per `CLAUDE.md`'s testing priorities instead of continuing to defer.
 
 ## Quick-Start Checklist for a New Session
 
