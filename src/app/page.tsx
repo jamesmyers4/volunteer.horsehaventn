@@ -18,6 +18,9 @@ export default function Home() {
           <Link href="/horses" className="text-sm underline">
             Horses
           </Link>
+          <Link href="/fields" className="text-sm underline">
+            Fields
+          </Link>
           <Link href="/admin" className="text-sm underline">
             Admin check
           </Link>

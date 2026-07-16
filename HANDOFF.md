@@ -2,11 +2,11 @@
 
 Horse Haven of Tennessee Ops Platform. This document is for picking the project back up cleanly — either you (James) starting a new session, or a future Claude instance getting oriented fast. It's a narrative/status log, not architecture — for *why* the schema looks the way it does, read `CONTEXT.md`. For coding conventions and version-specific traps, read `CLAUDE.md`. This file is "what actually happened and what state things are in."
 
-Last updated: July 16, 2026. First build session (schema design through four working feature slices) plus a same-day follow-up session that added medication and care/health tracking.
+Last updated: July 16, 2026. First build session (schema design through four working feature slices), a same-day follow-up session that added medication and care/health tracking, and a second same-day follow-up that added metrics and field/pasture assignment.
 
 ## Current State, in One Paragraph
 
-The repo is scaffolded, connected to a real Neon database, real Clerk auth, and a real R2 bucket — none of this is theoretical, all of it has been exercised end to end with real data. Six Phase 1 slices are built and verified working: authentication (Clerk → webhook → `Volunteer` row → role-based access), check-in (volunteers logging shifts), horse core records with photo upload, feeding (baseline + daily override), medication (regimen + daily log), and care/health (care entries + ongoing health issues). Nothing is deployed yet — this has all been run and tested via `npm run dev` locally, tunneled through ngrok only for the Clerk webhook. Not yet on Vercel.
+The repo is scaffolded, connected to a real Neon database, real Clerk auth, and a real R2 bucket — none of this is theoretical, all of it has been exercised end to end with real data. Eight Phase 1 slices are built and verified working: authentication (Clerk → webhook → `Volunteer` row → role-based access), check-in (volunteers logging shifts), horse core records with photo upload, feeding (baseline + daily override), medication (regimen + daily log), care/health (care entries + ongoing health issues), metrics (weight entries + generic Henneke BCS/height metrics), and field/pasture assignment (move a horse between fields, plus a plain fields list). Nothing is deployed yet — this has all been run and tested via `npm run dev` locally, tunneled through ngrok only for the Clerk webhook. Not yet on Vercel.
 
 ## Commit History (8 commits on `main`, all pushed)
 
@@ -35,12 +35,15 @@ src/app/api/horses/[id]/photos/route.ts       — photo upload Route Handler
 src/app/api/webhooks/clerk/route.ts           — Clerk user lifecycle webhook
 src/app/checkin/actions.ts
 src/app/checkin/page.tsx
+src/app/fields/page.tsx                       — plain fields list (V1 in place of Phase 2 map), read-only
 src/app/horses/HorseFormFields.tsx            — shared create/edit field set
 src/app/horses/[id]/care-actions.ts            — createCareEntry/createHealthIssue/resolveHealthIssue
 src/app/horses/[id]/edit/page.tsx
 src/app/horses/[id]/feeding-actions.ts
 src/app/horses/[id]/medication-actions.ts     — createMedicationRegimen/endMedicationRegimen/logMedicationAdministered
-src/app/horses/[id]/page.tsx                  — detail page: core fields, photos, feeding, medication, care/health
+src/app/horses/[id]/metrics-actions.ts        — createWeightEntry/createHorseMetric
+src/app/horses/[id]/page.tsx                  — detail page: core fields, photos, feeding, medication, care/health, metrics, field/pasture
+src/app/horses/[id]/pasture-actions.ts        — assignPasture
 src/app/horses/actions.ts                     — createHorse/updateHorse
 src/app/horses/new/page.tsx
 src/app/horses/page.tsx                       — list, defaults to ACTIVE only
@@ -97,14 +100,23 @@ Both slices landed the same way feeding did: no schema changes needed (`Medicati
 - Verified directly against the live Neon DB (see above) rather than through the browser — no `chromium-cli` or equivalent browser automation tool was available in this environment, and driving a real Clerk sign-in headlessly wasn't practical. `npx tsc --noEmit` and `npm run lint` both pass clean (matching what CI actually checks — there's no `next build` step in `.github/workflows/ci.yml`). **Still worth a manual click-through in a real browser before trusting this fully** — the query logic and write paths are verified, but the actual rendered UI (form layout, the "End regimen" link sitting inside the same table cell, etc.) has not been visually confirmed.
 - No E2E coverage added, consistent with feeding (which also shipped without Playwright coverage) — `tests/e2e/` still only has the placeholder smoke test, and there's no Clerk-authenticated test fixture yet for any protected page. Worth setting up before this drifts further from `CLAUDE.md`'s stated testing priorities.
 
+## Metrics + Field/Pasture Assignment — Built This Session
+
+Same pattern as medication/care/health before it: no schema changes needed (`HorseMetric`/`WeightEntry`/`MetricType` and `Field`/`PastureAssignment` were already fully modeled from the original grill session, and `MetricType` + all 14 `Field` rows were already seeded), just new Server Actions plus two new sections on `src/app/horses/[id]/page.tsx`, plus one new top-level page.
+
+- **Metrics** (`src/app/horses/[id]/metrics-actions.ts`): `createWeightEntry` and `createHorseMetric`, both Admin or Shift Lead. This permission split wasn't specified anywhere (`CLAUDE.md`'s permission table didn't cover `WeightEntry`/`HorseMetric` at all) — asked James directly this session rather than inferring it the way `MedicationLog`/`HealthIssue` access was inferred last session; he confirmed Admin-or-Shift-Lead, reasoning it the same way as `CareEntry` (a routine observation logged during a shift, e.g. at a weigh-in). Recorded in `CLAUDE.md`'s Permissions Quick Reference as a settled decision, not an open item. The horse detail page shows the last 10 `WeightEntry` rows and last 10 `HorseMetric` rows (joined to `MetricType` for name/unit) as two separate lists side by side — kept separate in the UI because they're deliberately separate tables in the schema (`CONTEXT.md` §13: `WeightEntry` is the timeline of record other things reference; `HorseMetric` is the generic bucket everything else, including Henneke BCS and height, grows into via new `MetricType` rows).
+- **Field/Pasture** (`src/app/horses/[id]/pasture-actions.ts`): `assignPasture`, Admin-only per `CONTEXT.md` §10 (not a judgment call — explicit in the design doc already). Closes the horse's current active `PastureAssignment` (sets `endDate` to today) if one exists, then creates the new row — two sequential awaits, deliberately no `$transaction`, matching §10's explicit reasoning that this needs to stay fast/simple rather than fight Postgres range constraints. The horse detail page's new "Field / Pasture" section shows the current field, a short history, and the move form (Admin-only; everyone else just sees current + history read-only).
+- **New `src/app/fields/page.tsx`**: the plain field list V1 calls for (`CONTEXT.md` §1/§10) standing in for the Phase 2 interactive drone-photo map. Read-only for any signed-in volunteer — lists all active fields with turnout/bring-in order and whichever horse(s) currently have an open assignment there. A field can hold more than one horse at once (it's a per-horse exclusivity rule, not a per-field one), so this renders as a list per row, not a single name. Linked from the homepage nav. Moving a horse still only happens from that horse's own detail page, kept as a single action location rather than duplicating the move form here too (asked James, he confirmed detail-page-only).
+- Verified directly against the live Neon DB with a throwaway script (same style as the medication/care session): created a real `WeightEntry` + `HorseMetric`, read them back through the exact query shapes `page.tsx` uses, exercised the close-old/open-new `PastureAssignment` sequence including the fields-list join, then cleaned up via raw Prisma deletes/restores bypassing `withChangeLog` so no test noise landed in `ChangeLog` and the horse's real prior pasture assignment was restored exactly. `npx tsc --noEmit` and `npm run lint` both pass clean. **Still worth a manual click-through in a real browser before trusting the UI fully** — same caveat as last session, the actual rendered layout hasn't been visually confirmed.
+- `trackedModels` in `src/lib/prisma.ts` already had `WeightEntry`, `HorseMetric`, and `PastureAssignment` from the original schema session — no gap to fix this time, unlike the `MedicationLog` miss found last session.
+
 ## What's Next
 
-Per `CONTEXT.md`'s Phase 1 priority order, in the order that makes sense to keep building:
+Per `CONTEXT.md`'s Phase 1 priority order:
 
-1. **Metrics** (`HorseMetric`, `WeightEntry`) — Henneke Body Condition Score and height tracking. Lower complexity than medication/care, mostly a log-entry form.
-2. **Field/Pasture assignment** (`PastureAssignment`) — moving horses between fields. The interactive drone-photo map itself is still Phase 2 (no photo/map exists to build it against yet), but the assignment tracking and a plain list view are Phase 1.
-3. Eventually: the cross-entity daily dashboard view (one row per horse showing feed/meds/care/notes at a glance) that `CONTEXT.md` §8 describes — now unblocked, since feeding, medication, and care all exist and there's actually three things to show per row instead of one.
-4. A Clerk-authenticated Playwright fixture, so E2E coverage can actually start landing per `CLAUDE.md`'s testing priorities instead of continuing to defer.
+1. The cross-entity daily dashboard view (one row per horse showing feed/meds/care/metrics/pasture at a glance) that `CONTEXT.md` §8 describes — now unblocked, since feeding, medication, care, metrics, and pasture all exist.
+2. A Clerk-authenticated Playwright fixture, so E2E coverage can actually start landing per `CLAUDE.md`'s testing priorities instead of continuing to defer. `CLAUDE.md`'s Testing section specifically calls out pasture reassignment as one of the flows to cover early — now buildable.
+3. GitHub Actions secrets still aren't configured (see the table above) — both workflows sit red/failing. Not blocking local dev, but needed before CI/nightly backup actually run.
 
 ## Quick-Start Checklist for a New Session
 

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma"
 import { createFeedingBaseline, createFeedingOverride } from "./feeding-actions"
 import { createMedicationRegimen, endMedicationRegimen, logMedicationAdministered } from "./medication-actions"
 import { createCareEntry, createHealthIssue, resolveHealthIssue } from "./care-actions"
+import { createWeightEntry, createHorseMetric } from "./metrics-actions"
+import { assignPasture } from "./pasture-actions"
 
 export default async function HorseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const volunteer = await requireVolunteer()
@@ -47,8 +49,42 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
     orderBy: { startDate: "desc" }
   })
 
+  const weightEntries = await prisma.weightEntry.findMany({
+    where: { horseId: id },
+    orderBy: { date: "desc" },
+    take: 10
+  })
+
+  const horseMetrics = await prisma.horseMetric.findMany({
+    where: { horseId: id },
+    include: { metricType: true },
+    orderBy: { date: "desc" },
+    take: 10
+  })
+
+  const metricTypes = await prisma.metricType.findMany({ where: { active: true }, orderBy: { name: "asc" } })
+
+  const currentPastureAssignment = await prisma.pastureAssignment.findFirst({
+    where: { horseId: id, endDate: null },
+    include: { field: true }
+  })
+
+  const pastureHistory = await prisma.pastureAssignment.findMany({
+    where: { horseId: id, endDate: { not: null } },
+    include: { field: true },
+    orderBy: { startDate: "desc" },
+    take: 5
+  })
+
+  const fields = await prisma.field.findMany({ where: { active: true }, orderBy: { code: "asc" } })
+
   const performerIds = Array.from(
-    new Set([...medicationRegimens.flatMap((r) => r.logs.map((l) => l.administeredBy)), ...careEntries.map((e) => e.performedBy)])
+    new Set([
+      ...medicationRegimens.flatMap((r) => r.logs.map((l) => l.administeredBy)),
+      ...careEntries.map((e) => e.performedBy),
+      ...weightEntries.map((w) => w.recordedBy),
+      ...horseMetrics.map((m) => m.recordedBy)
+    ])
   )
   const performers = await prisma.volunteer.findMany({ where: { id: { in: performerIds } } })
   const performerNames = new Map(performers.map((p) => [p.id, p.name]))
@@ -58,6 +94,8 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
   const canManageMedicationRegimen = volunteer.role === "ADMIN"
   const canLogMedication = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
   const canManageCare = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
+  const canLogMetrics = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
+  const canAssignPasture = volunteer.role === "ADMIN"
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-8">
@@ -347,6 +385,112 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
               </button>
             </form>
           </div>
+        )}
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Metrics & Weight</h2>
+        <div className="flex flex-wrap gap-8">
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-semibold text-gray-500">Weight</h3>
+            {weightEntries.length === 0 && <p className="text-sm text-gray-500">No weight entries yet.</p>}
+            <ul className="flex flex-col gap-1 text-sm">
+              {weightEntries.map((entry) => (
+                <li key={entry.id} className="border-b pb-1">
+                  <span className="text-gray-500">{entry.date.toDateString()}</span> — {entry.weight.toString()} lbs ({entry.context.toLowerCase()}) —{" "}
+                  {performerNames.get(entry.recordedBy) ?? entry.recordedBy}
+                  {entry.notes ? `: ${entry.notes}` : ""}
+                </li>
+              ))}
+            </ul>
+            {canLogMetrics && (
+              <form action={createWeightEntry.bind(null, horse.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
+                <input type="number" step="0.1" name="weight" placeholder="weight (lbs)" required className="rounded border px-2 py-1" />
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-1">
+                    <input type="radio" name="context" value="ROUTINE" defaultChecked required />
+                    Routine
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input type="radio" name="context" value="ASSESSMENT" required />
+                    Assessment
+                  </label>
+                </div>
+                <input type="text" name="notes" placeholder="notes" className="rounded border px-2 py-1" />
+                <button type="submit" className="w-fit rounded bg-black px-4 py-2 text-xs text-white">
+                  Log weight
+                </button>
+              </form>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-semibold text-gray-500">Other metrics</h3>
+            {horseMetrics.length === 0 && <p className="text-sm text-gray-500">No metrics logged yet.</p>}
+            <ul className="flex flex-col gap-1 text-sm">
+              {horseMetrics.map((metric) => (
+                <li key={metric.id} className="border-b pb-1">
+                  <span className="text-gray-500">{metric.date.toDateString()}</span> — {metric.metricType.name}: {metric.value.toString()} —{" "}
+                  {performerNames.get(metric.recordedBy) ?? metric.recordedBy}
+                  {metric.notes ? `: ${metric.notes}` : ""}
+                </li>
+              ))}
+            </ul>
+            {canLogMetrics && (
+              <form action={createHorseMetric.bind(null, horse.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
+                <select name="metricTypeId" required className="rounded border px-2 py-1">
+                  {metricTypes.map((metricType) => (
+                    <option key={metricType.id} value={metricType.id}>
+                      {metricType.name}
+                    </option>
+                  ))}
+                </select>
+                <input type="number" step="0.1" name="value" placeholder="value" required className="rounded border px-2 py-1" />
+                <input type="text" name="notes" placeholder="notes" className="rounded border px-2 py-1" />
+                <button type="submit" className="w-fit rounded bg-black px-4 py-2 text-xs text-white">
+                  Log metric
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Field / Pasture</h2>
+        <p className="text-sm">
+          Currently in:{" "}
+          {currentPastureAssignment ? (
+            <span className="font-semibold">
+              {currentPastureAssignment.field.code} <span className="font-normal text-gray-500">(since {currentPastureAssignment.startDate.toDateString()})</span>
+            </span>
+          ) : (
+            <span className="text-gray-500">unassigned</span>
+          )}
+        </p>
+        {pastureHistory.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <h3 className="text-xs font-semibold text-gray-500">History</h3>
+            <ul className="flex flex-col gap-1 text-sm">
+              {pastureHistory.map((assignment) => (
+                <li key={assignment.id} className="text-gray-500">
+                  {assignment.field.code}: {assignment.startDate.toDateString()} – {assignment.endDate?.toDateString()}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {canAssignPasture && (
+          <form action={assignPasture.bind(null, horse.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
+            <select name="fieldId" required className="rounded border px-2 py-1">
+              {fields.map((field) => (
+                <option key={field.id} value={field.id}>
+                  {field.code}
+                  {field.description ? ` — ${field.description}` : ""}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="w-fit rounded bg-black px-4 py-2 text-xs text-white">
+              Move to field
+            </button>
+          </form>
         )}
       </section>
     </main>
