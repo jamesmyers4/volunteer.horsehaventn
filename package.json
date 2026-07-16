@@ -15,6 +15,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1088.0",
     "@clerk/nextjs": "^7.5.18",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",

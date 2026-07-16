@@ -10,6 +10,8 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
 
   if (!horse) notFound()
 
+  const photos = await prisma.horsePhoto.findMany({ where: { horseId: id }, orderBy: { takenAt: "desc" } })
+
   return (
     <main className="flex flex-1 flex-col gap-4 p-8">
       <div className="flex items-center justify-between">
@@ -45,7 +47,32 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
           </>
         )}
       </dl>
-      <p className="text-sm text-gray-400">Photos coming once R2 is wired up.</p>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Photos</h2>
+        <div className="flex flex-wrap gap-3">
+          {photos.map((photo) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={photo.id} src={photo.url} alt={`${horse.name} - ${photo.type}`} className="h-32 w-32 rounded object-cover" />
+          ))}
+          {photos.length === 0 && <p className="text-sm text-gray-500">No photos yet.</p>}
+        </div>
+        <form action={`/api/horses/${horse.id}/photos`} method="post" encType="multipart/form-data" className="flex flex-col gap-2 text-sm">
+          <input type="file" name="file" accept="image/*" required />
+          <select name="type" className="rounded border px-2 py-1">
+            <option value="PROFILE">Profile (headshot)</option>
+            <option value="MAP">Map (full body)</option>
+            <option value="PROGRESS">Progress</option>
+            <option value="OTHER">Other</option>
+          </select>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" name="isPrimary" />
+            Set as primary for this type
+          </label>
+          <button type="submit" className="rounded border px-4 py-2">
+            Upload photo
+          </button>
+        </form>
+      </section>
     </main>
   )
 }
