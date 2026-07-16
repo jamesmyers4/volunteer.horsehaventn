@@ -75,6 +75,7 @@ Logs both `CREATE` (one row per field, `oldValue: null`) and `UPDATE` (field-lev
 - `src/app/admin/page.tsx` — first protected page, proves `requireRole` works end to end. Treat this as a diagnostic scaffold, not a real admin dashboard — replace once real admin features exist.
 - `src/app/page.tsx` — homepage with Clerk sign-in wired up via `Show`/`SignInButton`/`UserButton`.
 - `src/app/checkin/page.tsx` + `src/app/checkin/actions.ts` — first real feature: volunteers log a shift (date, AM/PM, work type, time in/out, notes). Matches the current Google Form's retrospective single-submission flow (both times entered at once), not real-time tap-in/tap-out — see `CONTEXT.md` §8 for why. Deliberately uses a plain `<form action={...}>` Server Action, not `useActionState` — see the Next.js 16 FormData regression note above.
+- `src/app/horses/` — Horse core CRUD. `page.tsx` (list, defaults to ACTIVE status only via `?status=all` toggle), `new/page.tsx` + `[id]/page.tsx` + `[id]/edit/page.tsx`, `actions.ts` (`createHorse`/`updateHorse`, both Admin-only per the permission table), `HorseFormFields.tsx` (shared field set between create/edit). No photo upload yet — that's the next slice, waiting on R2 credentials.
 - `.github/workflows/ci.yml` — lint, typecheck, Playwright on every PR/push to `main`.
 - `.github/workflows/nightly-backup.yml` — nightly `pg_dump` to R2 plus the Neon keep-alive ping, per `CONTEXT.md` §2.
 - `tests/e2e/smoke.spec.ts` — placeholder; replace with real coverage as features land, don't just add alongside it.

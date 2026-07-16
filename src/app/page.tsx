@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { Show, SignInButton, UserButton } from "@clerk/nextjs"
 
 export default function Home() {
@@ -11,12 +12,15 @@ export default function Home() {
       <Show when="signed-in">
         <UserButton />
         <div className="flex gap-4">
-          <a href="/checkin" className="text-sm underline">
+          <Link href="/checkin" className="text-sm underline">
             Check in
-          </a>
-          <a href="/admin" className="text-sm underline">
+          </Link>
+          <Link href="/horses" className="text-sm underline">
+            Horses
+          </Link>
+          <Link href="/admin" className="text-sm underline">
             Admin check
-          </a>
+          </Link>
         </div>
       </Show>
     </main>
