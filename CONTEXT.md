@@ -26,7 +26,7 @@ Live subdomain (ops.horsehaventn.org), separate codebase from the Firespring-bui
 | File storage | Cloudflare R2 (photos, future credential scans) |
 | Realtime chat | Pusher (Sandbox tier) |
 | Email | Resend (credential/training expiration reminders) |
-| Testing | Playwright + TypeScript |
+| Testing | Vitest (API/DB tests, against a real throwaway Postgres) + Playwright (E2E, real Clerk sign-in) |
 | Hosting / CI | Vercel + GitHub Actions |
 | Backups | Nightly `pg_dump` via GitHub Actions cron, pushed to R2. Same cron pattern also pings Neon to prevent the free-tier 7-day inactivity pause. |
 

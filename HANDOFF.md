@@ -2,7 +2,7 @@
 
 Horse Haven of Tennessee Ops Platform. This document is for picking the project back up cleanly — either you (James) starting a new session, or a future Claude instance getting oriented fast. It's a narrative/status log, not architecture — for *why* the schema looks the way it does, read `CONTEXT.md`. For coding conventions and version-specific traps, read `CLAUDE.md`. This file is "what actually happened and what state things are in."
 
-Last updated: July 16, 2026. First build session (schema design through four working feature slices), a same-day follow-up session that added medication and care/health tracking, a second same-day follow-up that added metrics and field/pasture assignment, and a third same-day follow-up that added the cross-entity daily dashboard.
+Last updated: July 16, 2026. First build session (schema design through four working feature slices), a same-day follow-up session that added medication and care/health tracking, a second same-day follow-up that added metrics and field/pasture assignment, a third same-day follow-up that added the cross-entity daily dashboard, and a fourth same-day follow-up (via Claude Code, with real push/run access — no more patch-file handoff) that built the full test suite: Vitest for API/DB tests and Playwright for E2E, both against a real throwaway Postgres.
 
 ## Current State, in One Paragraph
 
@@ -35,6 +35,20 @@ src/app/api/horses/[id]/photos/route.ts       — photo upload Route Handler
 src/app/api/webhooks/clerk/route.ts           — Clerk user lifecycle webhook
 src/app/checkin/actions.ts
 src/app/checkin/page.tsx
+docker-compose.test.yml                       — throwaway local Postgres for tests, tmpfs-backed, port 5433
+.env.test.example                             — checked-in template; copy to .env.test (gitignored, no secrets needed)
+vitest.config.ts
+playwright.config.ts                          — updated: globalSetup, serial workers, reuseExistingServer:false (safety)
+tests/vitest/setup.ts                         — Clerk/next-navigation mocks + per-test DB reset
+tests/vitest/helpers/{db,factories,form,auth-mock,signals}.ts
+tests/vitest/lib/{auth,changelog}.test.ts
+tests/vitest/actions/{checkin,horses,feeding,medication,care,metrics,pasture}.test.ts
+tests/vitest/routes/{photos,clerk-webhook}.test.ts
+tests/e2e/test-users.ts                       — the 3 fixed e2e-*@volunteer-ops.test Clerk test users
+tests/e2e/global-setup.ts                     — provisions those users via Clerk Backend API + seeds matching Volunteer rows
+tests/e2e/fixtures.ts                         — adminPage/shiftLeadPage/volunteerPage/openAs(role)
+tests/e2e/helpers/db.ts
+tests/e2e/{smoke,checkin,horses,feeding,pasture,care-and-metrics,dashboard}.spec.ts
 src/app/dashboard/page.tsx                    — cross-entity daily dashboard, one row per active horse, read-only
 src/app/fields/page.tsx                       — plain fields list (V1 in place of Phase 2 map), read-only
 src/app/horses/HorseFormFields.tsx            — shared create/edit field set
@@ -69,7 +83,7 @@ Seeded lookup tables (via `npm run db:seed`, already run): `CredentialType`, `Fe
 | **Neon** | Live, migrated, seeded | Project connected via both pooled (`DATABASE_URL`) and direct (`DIRECT_URL`) connection strings. Compute scales to zero after inactivity — expect the first query/migration after a gap to fail once and succeed on retry (`P1017: Server has closed the connection`). This happened three separate times tonight (twice on `migrate dev`, once opening Prisma Studio) and a plain retry fixed it every time. Not a bug, just how Neon's free tier behaves. |
 | **Clerk** | Live, dev instance | App named `volunteer-ops`, separate from Shenny/testLens. Webhook endpoint configured for `user.created`/`user.updated`/`user.deleted`, currently pointed at an **ngrok tunnel URL, which changes every time ngrok restarts.** Starting a new session that needs webhook testing (new signups, not just using an already-linked account) means: start ngrok fresh, copy the new forwarding URL, go to Clerk dashboard → Webhooks → your existing endpoint → update the URL to match. The signing secret does NOT change when you update the URL on an existing endpoint — only if you delete and recreate the endpoint. Using Clerk with development keys — production keys are a separate, later step (Clerk will nag about this, it's expected at this stage). |
 | **Cloudflare R2** | Live | Bucket `volunteer-ops`. Public Development URL enabled (the `pub-xxxx.r2.dev` domain) — **Cloudflare's own docs say this is rate-limited and dev-only; a custom domain is the recommended production path.** Not urgent, but on the list before real deployment. API token: Account API token, Object Read & Write, scoped to this bucket specifically (not Admin, not account-wide — least privilege, deliberate). |
-| **GitHub Actions secrets** | **Not configured yet** | `.github/workflows/ci.yml` and `nightly-backup.yml` both reference repo secrets (`DATABASE_URL`, `DIRECT_URL`, R2 creds, Clerk keys) that don't exist in the repo's Settings → Secrets yet. Both workflows currently sit red/failing in the Actions tab. Not blocking local development, but worth doing before relying on either CI or the automated backup. |
+| **GitHub Actions secrets** | **Not configured yet** | `nightly-backup.yml` still references repo secrets (`DATABASE_URL`, `DIRECT_URL`, R2 creds) that don't exist yet — still red/failing, still needed before the automated backup actually runs. `ci.yml` changed this session: it no longer touches Neon at all (lint/typecheck/Vitest/Playwright all run against a throwaway Postgres service container), so it only needs `CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` as repo secrets now — those are what E2E's Clerk sign-in needs. Also not configured yet, so CI's E2E step will fail until they're added, but that's a smaller/safer gap than before (a missing secret fails loudly; it can no longer silently point CI at production data). |
 | **Vercel** | Not set up | This project has only ever run via `npm run dev`. No deployment yet. |
 
 ## Real Bugs Found Tonight (read before touching related code)
@@ -121,12 +135,23 @@ The dashboard called out as item 1 in the prior session's "What's Next": one row
 - Verified against live Neon data the same way as prior sessions (no browser automation available in this environment): the throwaway script above ran the dashboard's exact query shapes against the real 4-horse dataset and printed the grouped results per horse — feeding, medication, and weight all matched what's actually in the DB (e.g. Remus's AM/PM Strategy baselines, Aries's one weight entry). `npx tsc --noEmit` and `npm run lint` both pass clean. **Still worth a manual click-through in a real browser before trusting the UI fully** — table layout with several stacked `<ul>`s per cell hasn't been visually confirmed, same caveat as every prior slice.
 - Homepage nav (`src/app/page.tsx`) got a `Dashboard` link alongside the existing `Check in`/`Horses`/`Fields`/`Admin check` links.
 
+## Test Suite — Built This Session
+
+This session was run via Claude Code directly against the repo (real local push/run access, no patch-file handoff), and closed out the testing gap every prior session's "What's Next" had been carrying forward. Full detail on the design is in `CLAUDE.md`'s Testing section; this is what actually happened.
+
+- **Vitest (API/DB tests):** 81 tests across `tests/vitest/`, all passing against a real dockerized Postgres — `lib/auth.test.ts` (10), `lib/changelog.test.ts` (22, the `withChangeLog` extension itself), and one file per Server Action module plus the two Route Handlers (checkin, horses, feeding, medication, care, metrics, pasture, photos, clerk-webhook). Every permission boundary in `CLAUDE.md`'s Permissions Quick Reference has a test asserting the wrong role is rejected *and writes nothing*, not just that the right role succeeds.
+- **Playwright (E2E):** 21 tests across 7 spec files, signed in via `@clerk/testing`'s real (ticket-based, no password) Clerk sign-in against three fixed test users (`e2e-admin@volunteer-ops.test` etc. — see `tests/e2e/test-users.ts`), covering check-in, horse CRUD, feeding baseline+override, pasture reassignment, medication/care/health/metrics logging, the dashboard, and role-based UI visibility. `tsc --noEmit`, `npm run lint`, and `npx playwright test --list` all pass clean — **but the suite has not actually been executed against live Clerk in this session.** First real run creates the three test users in your live Clerk dev instance (idempotent after that); this was deliberately left for James to run himself (`npm run test:e2e`, after `npm run test:db:reset`) rather than done automatically, since it's the one part of this session that reaches outside the local sandbox. Treat this the same as every prior session's "not visually confirmed in a real browser" caveat — the code is real and reviewed, but this specific execution hasn't happened yet.
+- **Test database:** `docker-compose.test.yml`, a throwaway `postgres:16-alpine` on port 5433 (tmpfs-backed, no persistent volume — always starts clean). Both Vitest and Playwright refuse to run if `DATABASE_URL` doesn't contain `localhost`, specifically so a misconfigured env can never point a test run's `TRUNCATE` at Neon. `ci.yml` was rewritten to use a GitHub Actions `services:` Postgres container on the same port instead of Neon secrets — CI no longer has any path to touching production data at all, which is a meaningful safety improvement over the prior setup (the old `ci.yml` ran the placeholder E2E smoke test directly against real `secrets.DATABASE_URL`/`DIRECT_URL`).
+- **New local dependency:** Docker, for `docker-compose.test.yml`. Confirmed available and working in this session's environment (Docker 29.5.3 / Compose v5.1.4). If a future machine doesn't have it, `npm run test:unit`/`test:e2e` will fail at the DB-connection step with a clear "connection refused," not something subtler.
+- Quick start: `npm run test:db:reset && npm run test:unit` gets Vitest running from zero in well under a minute. `npm run test:e2e` additionally needs `.env` to have real, valid `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` (already does, per the Clerk row above) since E2E auth is real Clerk, not mocked.
+
 ## What's Next
 
 Per `CONTEXT.md`'s Phase 1 priority order:
 
-1. A Clerk-authenticated Playwright fixture, so E2E coverage can actually start landing per `CLAUDE.md`'s testing priorities instead of continuing to defer. `CLAUDE.md`'s Testing section specifically calls out pasture reassignment as one of the flows to cover early — now buildable.
-2. GitHub Actions secrets still aren't configured (see the table above) — both workflows sit red/failing. Not blocking local dev, but needed before CI/nightly backup actually run.
+1. **Run `npm run test:e2e` for real, once**, to confirm the Playwright suite actually passes against live Clerk and not just `tsc`/lint/`--list`. This is the one loose end from this session.
+2. Add `CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` as GitHub Actions repo secrets so CI's E2E step goes green instead of failing on missing secrets (`DATABASE_URL`/`DIRECT_URL` secrets are no longer needed by CI at all — see the External Services table).
+3. `nightly-backup.yml`'s Neon/R2 secrets still aren't configured (see the table above) — needed before the automated backup actually runs.
 
 ## Quick-Start Checklist for a New Session
 
@@ -134,6 +159,14 @@ Per `CONTEXT.md`'s Phase 1 priority order:
 git pull
 npm install
 npm run dev
+```
+
+To run the test suite (needs Docker running):
+```
+cp .env.test.example .env.test   # first time only
+npm run test:db:reset            # brings up the throwaway test Postgres, migrates, seeds
+npm run test:unit                # Vitest — API/DB tests, no external services touched
+npm run test:e2e                 # Playwright — real Clerk sign-in, needs .env's Clerk keys
 ```
 
 If you need to test anything involving new Clerk signups or webhook-dependent flows (not needed for most day-to-day feature work — only matters if the feature itself touches user creation):
