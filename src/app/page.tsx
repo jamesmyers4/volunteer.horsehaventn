@@ -12,6 +12,9 @@ export default function Home() {
       <Show when="signed-in">
         <UserButton />
         <div className="flex gap-4">
+          <Link href="/dashboard" className="text-sm underline">
+            Dashboard
+          </Link>
           <Link href="/checkin" className="text-sm underline">
             Check in
           </Link>
