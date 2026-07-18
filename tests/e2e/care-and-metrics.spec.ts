@@ -9,7 +9,7 @@ test("a Shift Lead opens a health issue, logs a related care entry, then resolve
   await issueForm.getByPlaceholder("description").fill("Swelling on left hind fetlock")
   await issueForm.getByRole("button", { name: "Open issue" }).click()
 
-  await expect(shiftLeadPage.getByText("Swelling on left hind fetlock")).toBeVisible()
+  await expect(shiftLeadPage.getByRole("listitem").filter({ hasText: "Swelling on left hind fetlock" })).toBeVisible()
 
   const careForm = shiftLeadPage.locator("form").filter({ hasText: "Log care entry" })
   await careForm.getByRole("combobox").first().selectOption({ label: "Wound Check" })
@@ -79,7 +79,7 @@ test("a plain Volunteer cannot see any care, medication, or metrics logging form
 
   await expect(volunteerPage.getByText("Add medication regimen")).not.toBeVisible()
   await expect(volunteerPage.getByText("Log care entry")).not.toBeVisible()
-  await expect(volunteerPage.getByText("Open health issue")).not.toBeVisible()
+  await expect(volunteerPage.getByText("Open health issue", { exact: true })).not.toBeVisible()
   await expect(volunteerPage.getByText("Log weight")).not.toBeVisible()
   await expect(volunteerPage.getByText("Log metric")).not.toBeVisible()
 })

@@ -19,7 +19,7 @@
     "test:db:reset": "npm run test:db:up && npm run test:db:migrate && npm run test:db:seed",
     "test:unit": "dotenv -e .env.test -- vitest run",
     "test:unit:watch": "dotenv -e .env.test -- vitest",
-    "test:e2e": "dotenv -e .env.test -- playwright test",
+    "test:e2e": "dotenv -e .env.test -e .env -- playwright test",
     "test:all": "npm run test:db:reset && npm run test:unit && npm run test:e2e"
   },
   "dependencies": {

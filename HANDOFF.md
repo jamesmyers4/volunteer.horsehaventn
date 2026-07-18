@@ -8,17 +8,23 @@ Last updated: July 16, 2026. First build session (schema design through four wor
 
 The repo is scaffolded, connected to a real Neon database, real Clerk auth, and a real R2 bucket — none of this is theoretical, all of it has been exercised end to end with real data. Eight Phase 1 feature slices are built and verified working: authentication (Clerk → webhook → `Volunteer` row → role-based access), check-in (volunteers logging shifts), horse core records with photo upload, feeding (baseline + daily override), medication (regimen + daily log), care/health (care entries + ongoing health issues), metrics (weight entries + generic Henneke BCS/height metrics), and field/pasture assignment (move a horse between fields, plus a plain fields list). On top of those, the cross-entity daily dashboard (`/dashboard`) now ties them all together in one read-only view. Nothing is deployed yet — this has all been run and tested via `npm run dev` locally, tunneled through ngrok only for the Clerk webhook. Not yet on Vercel.
 
-## Commit History (8 commits on `main`, all pushed)
+## Commit History (14 commits on `main`, all pushed — this list had gone stale for several sessions; corrected 2026-07-18)
 
 ```
 81285ba Scaffold Next.js + Prisma project from grill session decisions
-ee015cd Fix Neon pooled/direct connection split and stop ignoring .env.example
-6dd25db Move seed command config to prisma.config.ts per Prisma 7
-581aa8b Wire up Clerk webhook, sign-in UI, and first protected page
-79dcb6f Add check-in feature - first real Phase 1 slice
-1bc5e2c Add Horse core CRUD - second Phase 1 slice
-a76e618 Add horse photo upload via R2 - third Phase 1 slice
-a3c3ce7 Add feeding baseline/override - fourth Phase 1 slice
+d3d95e8 Fix Neon pooled/direct connection split and stop ignoring .env.example
+22c4328 Move seed command config to prisma.config.ts per Prisma 7
+5cbe0c2 Wire up Clerk webhook, sign-in UI, and first protected page
+794a81b Add check-in feature - first real Phase 1 slice
+b034665 Add initial migration history
+5d70aa6 Add Horse core CRUD - second Phase 1 slice
+745a33b Add horse photo upload via R2 - third Phase 1 slice
+21f7e7c Add feeding baseline/override - fourth Phase 1 slice
+1b4f250 Add HANDOFF.md - session continuity log
+0f32fc3 feat: medication and care/heatlh tracking
+b2a7a5d feat: added Horse Metrics and Field/Pasture Assignment
+fc94ce1 Building out the ops platform's daily dashboard
+a209c37 build out test suite: Playwright e2e + Vitest API + db
 ```
 
 Read the commit messages themselves for detail — each one documents the reasoning for that slice, not just what changed.
@@ -145,12 +151,21 @@ This session was run via Claude Code directly against the repo (real local push/
 - **New local dependency:** Docker, for `docker-compose.test.yml`. Confirmed available and working in this session's environment (Docker 29.5.3 / Compose v5.1.4). If a future machine doesn't have it, `npm run test:unit`/`test:e2e` will fail at the DB-connection step with a clear "connection refused," not something subtler.
 - Quick start: `npm run test:db:reset && npm run test:unit` gets Vitest running from zero in well under a minute. `npm run test:e2e` additionally needs `.env` to have real, valid `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` (already does, per the Clerk row above) since E2E auth is real Clerk, not mocked.
 
+## E2E Suite — Actually Run for the First Time (2026-07-18)
+
+The prior session's "run `npm run test:e2e` for real, once" item turned out to hide two real bugs, not just an unexecuted step — the suite as committed could never have passed on any machine.
+
+- **`test:e2e`'s dotenv-cli invocation never loaded `.env`.** `package.json` had `"test:e2e": "dotenv -e .env.test -- playwright test"` — only `.env.test`, which has no Clerk keys. `global-setup.ts` had a comment claiming the real command was `-e .env.test -e .env`, but that second flag was never actually in the script. Result: `clerkSetup()` failed immediately with "You need to set the CLERK_PUBLISHABLE_KEY environment variable," before creating any test users. CI's E2E step was unaffected by this specific bug (the workflow injects the Clerk keys directly via `env:` on that step, bypassing dotenv-cli), but would still fail today on missing repo secrets — see below. **Fixed:** script is now `dotenv -e .env.test -e .env -- playwright test`; confirmed the local test DB URL still wins over `.env`'s real Neon URL (dotenv-cli: first `-e` takes precedence on overlapping keys).
+- **The `.test` TLD used for all three E2E test emails (`e2e-*@volunteer-ops.test`) is rejected by Clerk's live API.** RFC 2606 reserves `.test` for exactly this purpose, but Clerk's own email-format validator 422s on it (`form_param_format_invalid`) — confirmed by direct API probe. `.example.com` (also RFC 2606-reserved, guaranteed non-deliverable) is accepted. **Fixed:** `tests/e2e/test-users.ts` now uses `e2e-*@volunteer-ops.example.com`. The three real (disposable) Clerk test users have now been created in the live dev instance.
+- **First real run result: 19/21 passing**, after also fixing two locator bugs surfaced by actually running the suite for the first time (`care-and-metrics.spec.ts`: a `getByText` match that hit both a list item and a `<select>` option — strict-mode violation — and a substring match on "Open health issue" that was also matching the always-visible "Open health issue**s**" read-only heading; both are test-only fixes, not app bugs, and both now use scoped/exact locators).
+- **Known gap, not yet root-caused:** 2 tests still fail, and both point at the same underlying issue — state isn't being reliably cleared between tests partway through a full run. `horses.spec.ts`'s "a Shift Lead cannot create a horse" expects `prisma.horse.count()` to be `0` after `fixtures.ts`'s `beforeEach` truncate, but reproducibly gets a nonzero count (7 on one run, 8 on the next) — leftover rows from earlier tests in the same run that should have been wiped. The last test in the run (`smoke.spec.ts`'s Admin/Volunteer role check) reproducibly fails with `Clerk: Failed to sign in: You're already signed in`, suggesting a session isn't being torn down between tests either. Working theory, unconfirmed: lock contention or connection-pool interaction between the test process's Prisma client and the long-running Next.js `webServer` process's own connection pool, both hitting the same local Postgres — but this needs actual debugging (e.g. instrumenting `resetTransactionalData()`, checking `pg_locks` mid-run), not another guess. Worth a dedicated session before trusting a full green run.
+
 ## What's Next
 
 Per `CONTEXT.md`'s Phase 1 priority order:
 
-1. **Run `npm run test:e2e` for real, once**, to confirm the Playwright suite actually passes against live Clerk and not just `tsc`/lint/`--list`. This is the one loose end from this session.
-2. Add `CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` as GitHub Actions repo secrets so CI's E2E step goes green instead of failing on missing secrets (`DATABASE_URL`/`DIRECT_URL` secrets are no longer needed by CI at all — see the External Services table).
+1. **Root-cause the E2E test-isolation gap above** — the leftover `Horse` rows and the cross-test Clerk session bleed. Likely one underlying cause, not two.
+2. Add `CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` as GitHub Actions repo secrets so CI's E2E step goes green instead of failing on missing secrets (`DATABASE_URL`/`DIRECT_URL` secrets are no longer needed by CI at all — see the External Services table). Not verified from this session — no `gh` CLI access to check current repo secrets state.
 3. `nightly-backup.yml`'s Neon/R2 secrets still aren't configured (see the table above) — needed before the automated backup actually runs.
 
 ## Quick-Start Checklist for a New Session
