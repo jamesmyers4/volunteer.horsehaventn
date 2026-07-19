@@ -21,5 +21,9 @@ export async function createLocationAssignment(animalId: string, formData: FormD
     data: { animalId, locationId, period, effectiveAt: new Date(), recordedById: volunteer.id, notes }
   })
 
-  redirect(`/animals/${animalId}`)
+  // V2.md Session 6: the Turnout Board reuses this same action for its on-the-spot correction
+  // affordance, same optional-redirectTo pattern as createFeedingOverride — no redirectTo
+  // means the animal detail page's existing form behaves exactly as before.
+  const redirectToRaw = formData.get("redirectTo")
+  redirect(redirectToRaw ? String(redirectToRaw) : `/animals/${animalId}`)
 }

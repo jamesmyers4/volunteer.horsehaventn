@@ -8,6 +8,7 @@ import { createCareEntry, createHealthIssue, resolveHealthIssue } from "./care-a
 import { createWeightEntry, createAnimalMetric } from "./metrics-actions"
 import { createLocationAssignment } from "./location-actions"
 import { getLocationHistory, currentFromHistory } from "@/lib/locations"
+import { HeadshotCropUpload } from "./HeadshotCropUpload"
 
 export default async function AnimalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const volunteer = await requireVolunteer()
@@ -139,10 +140,13 @@ export default async function AnimalDetailPage({ params }: { params: Promise<{ i
           ))}
           {photos.length === 0 && <p className="text-sm text-gray-500">No photos yet.</p>}
         </div>
+        {/* Headshot uploads go through the client-side square-crop tool (V2.md Session 6 —
+            the Feed Board needs a standardized square headshot per animal). Other photo
+            types keep the plain multipart Route Handler form unchanged. */}
+        <HeadshotCropUpload animalId={animal.id} />
         <form action={`/api/animals/${animal.id}/photos`} method="post" encType="multipart/form-data" className="flex flex-col gap-2 text-sm">
           <input type="file" name="file" accept="image/*" required />
           <select name="type" className="rounded border px-2 py-1">
-            <option value="PROFILE">Profile (headshot)</option>
             <option value="MAP">Map (full body)</option>
             <option value="PROGRESS">Progress</option>
             <option value="OTHER">Other</option>

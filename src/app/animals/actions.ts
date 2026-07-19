@@ -9,6 +9,7 @@ function readAnimalFields(formData: FormData) {
   const caseReferenceRaw = formData.get("caseReference")
   const handlingNotesRaw = formData.get("handlingNotes")
   const notesRaw = formData.get("notes")
+  const herdOrderRaw = formData.get("herdOrder")
 
   return {
     name: String(formData.get("name")),
@@ -20,7 +21,8 @@ function readAnimalFields(formData: FormData) {
     caseReference: caseReferenceRaw ? String(caseReferenceRaw) : null,
     requiredHandlerColor: String(formData.get("requiredHandlerColor")) as "GREEN" | "ORANGE" | "YELLOW" | "BLUE" | "RED",
     handlingNotes: handlingNotesRaw ? String(handlingNotesRaw) : null,
-    notes: notesRaw ? String(notesRaw) : null
+    notes: notesRaw ? String(notesRaw) : null,
+    herdOrder: herdOrderRaw && String(herdOrderRaw).length > 0 ? parseInt(String(herdOrderRaw), 10) : null
   }
 }
 

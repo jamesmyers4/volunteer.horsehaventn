@@ -36,5 +36,11 @@ export async function createFeedingOverride(baselineId: string, animalId: string
     data: { feedingBaselineId: baselineId, date: today, amount, reason, changedBy: volunteer.id, notes }
   })
 
-  redirect(`/animals/${animalId}`)
+  // V2.md Session 6: the Feed Board reuses this same action for its inline edit affordance
+  // (rather than a parallel write path) but needs to land back on the board, not the animal
+  // detail page — an optional hidden redirectTo field lets the caller override the default
+  // without changing behavior for the animal detail page's own form (no redirectTo → same
+  // `/animals/{id}` target as before).
+  const redirectToRaw = formData.get("redirectTo")
+  redirect(redirectToRaw ? String(redirectToRaw) : `/animals/${animalId}`)
 }

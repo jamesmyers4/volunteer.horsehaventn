@@ -71,6 +71,25 @@ describe("createFeedingOverride", () => {
     expect(override.changedBy).toBe(lead.id)
   })
 
+  // V2.md Session 6: the Feed Board reuses this action for its inline edit affordance and
+  // needs to land back on /feed-board instead of the animal detail page — see the optional
+  // redirectTo field added to createFeedingOverride in feeding-actions.ts.
+  it("redirects to a caller-provided redirectTo instead of the animal detail page when set", async () => {
+    const animal = await createAnimal()
+    const feedType = await getFeedType()
+    const baseline = await prisma.feedingBaseline.create({
+      data: { animalId: animal.id, feedTypeId: feedType.id, shift: "AM", amount: "1" }
+    })
+    await createVolunteer({ clerkId: "clerk_admin_fo2", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_fo2")
+
+    const url = await captureRedirect(() =>
+      createFeedingOverride(baseline.id, animal.id, formData({ amount: "0.5", redirectTo: "/feed-board" }))
+    )
+
+    expect(url).toBe("/feed-board")
+  })
+
   it("stores a null amount when the override only carries a reason (e.g. a skipped feed)", async () => {
     const animal = await createAnimal()
     const feedType = await getFeedType()

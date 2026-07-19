@@ -113,6 +113,22 @@ describe("createLocationAssignment", () => {
     expect(assignment.period).toBe("DAY")
   })
 
+  // V2.md Session 6: the Turnout Board reuses this action for its on-the-spot correction
+  // affordance and needs to land back on /turnout-board instead of the animal detail page —
+  // see the optional redirectTo field added to createLocationAssignment in location-actions.ts.
+  it("redirects to a caller-provided redirectTo instead of the animal detail page when set", async () => {
+    const animal = await createAnimal()
+    const location = await getLocation("L2")
+    await createVolunteer({ clerkId: "clerk_admin_la3", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_la3")
+
+    const url = await captureRedirect(() =>
+      createLocationAssignment(animal.id, formData({ locationId: location.id, period: "DAY", redirectTo: "/turnout-board?period=DAY" }))
+    )
+
+    expect(url).toBe("/turnout-board?period=DAY")
+  })
+
   it("is append-only — a second move for the same animal/period adds a new row instead of touching the old one", async () => {
     const animal = await createAnimal()
     const fieldA = await getLocation("L1")

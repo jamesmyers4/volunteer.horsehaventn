@@ -405,6 +405,14 @@ model Animal {
   requiredHandlerColor   HandlingColor              @default(GREEN)
   handlingNotes          String?
   notes                  String?
+  // V2.md Session 6: manual, admin-editable herd-hierarchy rank for the Turnout Board's
+  // per-field ordering ("lead animal at top"). Nullable — most animals won't have a
+  // documented rank, and null always sorts after any set value (see turnout-board/page.tsx),
+  // falling back to alphabetical among unranked animals. Global per animal, not per-location,
+  // matching the simplicity precedent set by Location.turnoutOrder/bringInOrder. Confirmed
+  // with James (no such field/decision existed anywhere before this session, despite V2.md's
+  // claim it had already been decided — see HANDOFF.md).
+  herdOrder              Int?
   createdAt              DateTime                   @default(now())
   updatedAt              DateTime                   @updatedAt
   photos                 AnimalPhoto[]

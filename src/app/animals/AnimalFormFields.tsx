@@ -9,6 +9,7 @@ type AnimalDefaults = {
   requiredHandlerColor?: string
   handlingNotes?: string | null
   notes?: string | null
+  herdOrder?: number | null
 }
 
 export function AnimalFormFields({ defaults }: { defaults?: AnimalDefaults }) {
@@ -75,6 +76,16 @@ export function AnimalFormFields({ defaults }: { defaults?: AnimalDefaults }) {
       <label className="flex flex-col gap-1 text-sm">
         Notes
         <textarea name="notes" defaultValue={defaults?.notes ?? ""} rows={3} className="rounded border px-2 py-1" />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        Herd order (Turnout Board rank, lower = higher in hierarchy)
+        <input
+          type="number"
+          name="herdOrder"
+          defaultValue={defaults?.herdOrder ?? ""}
+          placeholder="leave blank if unranked"
+          className="rounded border px-2 py-1"
+        />
       </label>
     </>
   )

@@ -64,6 +64,20 @@ describe("createAnimal", () => {
     expect(animal.legalCase).toBe(false)
     expect(animal.caseReference).toBeNull()
     expect(animal.intakeDate).toBeNull()
+    expect(animal.herdOrder).toBeNull()
+  })
+
+  // V2.md Session 6: herdOrder drives the Turnout Board's per-field herd-hierarchy ordering
+  // (lead animal at top) — see prisma/schema.prisma's comment on Animal.herdOrder for why
+  // this field exists (no such field/prior decision existed before this session).
+  it("persists herdOrder when set", async () => {
+    await createVolunteer({ clerkId: "clerk_admin_h3", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_h3")
+
+    await captureRedirect(() => createAnimalAction(formData({ ...baseFields, herdOrder: "2" })))
+
+    const animal = await prisma.animal.findFirstOrThrow({ where: { name: "Winter" } })
+    expect(animal.herdOrder).toBe(2)
   })
 })
 
@@ -97,5 +111,21 @@ describe("updateAnimal", () => {
       where: { entityType: "Animal", entityId: animal.id, field: "name", action: "UPDATE" }
     })
     expect(nameChange).toMatchObject({ oldValue: "Original", newValue: "Renamed" })
+  })
+
+  it("updates herdOrder and logs the change", async () => {
+    const animal = await createAnimal({ name: "Original", status: "ACTIVE" })
+    await createVolunteer({ clerkId: "clerk_admin_u2", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_u2")
+
+    await captureRedirect(() => updateAnimal(animal.id, formData({ ...baseFields, name: "Renamed", herdOrder: "1" })))
+
+    const updated = await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })
+    expect(updated.herdOrder).toBe(1)
+
+    const herdOrderChange = await prisma.changeLog.findFirst({
+      where: { entityType: "Animal", entityId: animal.id, field: "herdOrder", action: "UPDATE" }
+    })
+    expect(herdOrderChange).toMatchObject({ oldValue: null, newValue: "1" })
   })
 })
