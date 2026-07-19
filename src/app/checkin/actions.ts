@@ -1,8 +1,9 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { requireVolunteer } from "@/lib/auth"
+import { requireVolunteer, requireRole } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
+import { maybeSetFirstShiftDate } from "@/lib/checkin"
 
 export async function submitCheckIn(formData: FormData) {
   const volunteer = await requireVolunteer()
@@ -38,13 +39,37 @@ export async function submitCheckIn(formData: FormData) {
 
   // V2.md Session 2: the tier progression tenure clock starts at the first recorded
   // shift/check-in, not account creation. Set exactly once — this check-in's own date, not
-  // "now" — and never touched again after that (a second check-in leaves it alone).
-  if (!volunteer.firstShiftDate) {
-    await withChangeLog(prisma, volunteer.id, "First shift date set from first check-in").volunteer.update({
-      where: { id: volunteer.id },
-      data: { firstShiftDate: checkInAt }
-    })
-  }
+  // "now" — and never touched again after that (a second check-in leaves it alone). Shared
+  // with the kiosk/QR real-time toggle (src/lib/checkin.ts) so both entry points apply the
+  // rule identically.
+  await maybeSetFirstShiftDate(volunteer, checkInAt)
 
   redirect("/checkin?success=1")
+}
+
+// V2.md Session 5: per-occurrence correction of the ShiftTemplate's resolved reference
+// time — "we actually ran 15 minutes late today." Any SHIFT_LEAD or ADMIN can set this for
+// any date+type occurrence (Shift Lead already has org-wide read access to shifts per
+// CLAUDE.md's permission table, and this is a simple same-day correction, not scoped to a
+// specific person's own assignment). "ADMIN can override a shift lead's override" just
+// means both roles can write here — whoever writes last wins, no extra locking; who/when
+// is captured by ChangeLog (Shift is a tracked model) rather than a dedicated field.
+export async function setShiftActualTimes(date: string, shiftType: "AM" | "PM", formData: FormData) {
+  const actor = await requireRole(["ADMIN", "SHIFT_LEAD"])
+
+  const actualStartTime = String(formData.get("actualStartTime"))
+  const actualEndTime = String(formData.get("actualEndTime"))
+
+  const shift = await prisma.shift.upsert({
+    where: { date_type: { date: new Date(date), type: shiftType } },
+    update: {},
+    create: { date: new Date(date), type: shiftType }
+  })
+
+  await withChangeLog(prisma, actor.id, "Shift actual time override").shift.update({
+    where: { id: shift.id },
+    data: { actualStartTime, actualEndTime }
+  })
+
+  redirect("/checkin")
 }

@@ -39,6 +39,12 @@ export default function Home() {
           <Link href="/events" className="text-sm underline">
             Events
           </Link>
+          <Link href="/settings" className="text-sm underline">
+            Settings
+          </Link>
+          <Link href="/kiosk" className="text-sm underline">
+            Kiosk
+          </Link>
           <Link href="/admin" className="text-sm underline">
             Admin check
           </Link>

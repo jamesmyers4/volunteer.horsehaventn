@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { submitCheckIn } from "@/app/checkin/actions"
+import { submitCheckIn, setShiftActualTimes } from "@/app/checkin/actions"
 import { prisma } from "@/lib/prisma"
 import { mockSignedInAs, mockSignedOut } from "../helpers/auth-mock"
 import { createVolunteer, getWorkType } from "../helpers/factories"
@@ -137,5 +137,66 @@ describe("submitCheckIn", () => {
 
     const updated = await prisma.volunteer.findUniqueOrThrow({ where: { id: volunteer.id } })
     expect(updated.firstShiftDate?.toISOString()).toContain("2025-01-01")
+  })
+})
+
+// V2.md Session 5: per-occurrence correction of a shift's reference time.
+describe("setShiftActualTimes", () => {
+  it("is Admin-or-Shift-Lead only — a plain Volunteer is rejected and nothing is written", async () => {
+    await createVolunteer({ clerkId: "clerk_vol_ssat", role: "VOLUNTEER" })
+    mockSignedInAs("clerk_vol_ssat")
+
+    await expect(
+      setShiftActualTimes("2026-07-20", "AM", formData({ actualStartTime: "09:15", actualEndTime: "11:15" }))
+    ).rejects.toThrow("Not authorized")
+    expect(await prisma.shift.count({ where: { date: new Date("2026-07-20"), type: "AM" } })).toBe(0)
+  })
+
+  it("a Shift Lead can set today's actual shift times, creating the Shift row if none exists yet", async () => {
+    await createVolunteer({ clerkId: "clerk_lead_ssat", role: "SHIFT_LEAD" })
+    mockSignedInAs("clerk_lead_ssat")
+
+    const url = await captureRedirect(() =>
+      setShiftActualTimes("2026-07-20", "AM", formData({ actualStartTime: "09:15", actualEndTime: "11:15" }))
+    )
+
+    expect(url).toBe("/checkin")
+    const shift = await prisma.shift.findFirstOrThrow({ where: { date: new Date("2026-07-20"), type: "AM" } })
+    expect(shift.actualStartTime).toBe("09:15")
+    expect(shift.actualEndTime).toBe("11:15")
+  })
+
+  it("an Admin can overwrite a Shift Lead's previously-set override on the same occurrence", async () => {
+    await createVolunteer({ clerkId: "clerk_lead_ssat2", role: "SHIFT_LEAD" })
+    mockSignedInAs("clerk_lead_ssat2")
+    await captureRedirect(() => setShiftActualTimes("2026-07-21", "PM", formData({ actualStartTime: "16:10", actualEndTime: "19:10" })))
+
+    await createVolunteer({ clerkId: "clerk_admin_ssat2", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_ssat2")
+    await captureRedirect(() => setShiftActualTimes("2026-07-21", "PM", formData({ actualStartTime: "16:00", actualEndTime: "19:00" })))
+
+    const shift = await prisma.shift.findFirstOrThrow({ where: { date: new Date("2026-07-21"), type: "PM" } })
+    expect(shift.actualStartTime).toBe("16:00")
+
+    const entries = await prisma.changeLog.findMany({ where: { entityType: "Shift", entityId: shift.id }, orderBy: { createdAt: "asc" } })
+    expect(entries.length).toBeGreaterThan(0)
+  })
+
+  it("reuses the same Shift row a volunteer already checked into for that date+type", async () => {
+    const volunteer = await createVolunteer({ clerkId: "clerk_vol_ssat3" })
+    mockSignedInAs("clerk_vol_ssat3")
+    const workType = await getWorkType()
+    await captureRedirect(() =>
+      submitCheckIn(formData({ date: "2026-07-22", shiftType: "AM", workTypeId: workType.id, checkInTime: "09:00", checkOutTime: "11:00" }))
+    )
+    const existingCheckIn = await prisma.checkIn.findFirstOrThrow({ where: { volunteerId: volunteer.id } })
+
+    await createVolunteer({ clerkId: "clerk_admin_ssat3", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_ssat3")
+    await captureRedirect(() => setShiftActualTimes("2026-07-22", "AM", formData({ actualStartTime: "09:05", actualEndTime: "11:05" })))
+
+    const checkInShift = await prisma.checkIn.findUniqueOrThrow({ where: { id: existingCheckIn.id } })
+    const shift = await prisma.shift.findUniqueOrThrow({ where: { id: checkInShift.shiftId } })
+    expect(shift.actualStartTime).toBe("09:05")
   })
 })

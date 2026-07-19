@@ -127,6 +127,29 @@ async function main() {
     { code: "RP6", turnoutOrder: 6, bringInOrder: 5 }
   ]
 
+  // V2.md Session 5: reference AM/PM shift times, seasonal (winter) variants confirmed
+  // directly with James rather than guessed — AM shifts later (10:00-12:00, later sunrise),
+  // PM shifts earlier (3:00-6:00, earlier sunset). Edit-only via /settings after this;
+  // ShiftType is a fixed two-value enum so these two rows are the complete set.
+  const shiftTemplates = [
+    { shiftType: "AM" as const, name: "AM Shift", standardStartTime: "09:00", standardEndTime: "11:00", winterStartTime: "10:00", winterEndTime: "12:00" },
+    { shiftType: "PM" as const, name: "PM Shift", standardStartTime: "16:00", standardEndTime: "19:00", winterStartTime: "15:00", winterEndTime: "18:00" }
+  ]
+  for (const template of shiftTemplates) {
+    await prisma.shiftTemplate.upsert({
+      where: { shiftType: template.shiftType },
+      update: {},
+      create: template
+    })
+  }
+
+  // Singleton FarmSettings row — findFirst-or-create, same pattern getFarmSettings() uses
+  // at read time (src/lib/farmSettings.ts). Seeded here too so a fresh DB always has one.
+  const existingFarmSettings = await prisma.farmSettings.findFirst()
+  if (!existingFarmSettings) {
+    await prisma.farmSettings.create({ data: { activeSeason: "STANDARD" } })
+  }
+
   for (const field of fieldCodes) {
     await prisma.location.upsert({
       where: { fieldCode: field.code },

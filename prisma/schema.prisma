@@ -127,6 +127,11 @@ enum EventSignupStatus {
   CANCELLED
 }
 
+enum FarmSeason {
+  STANDARD
+  WINTER
+}
+
 model Volunteer {
   id                    String                     @id @default(cuid())
   clerkId               String?                    @unique
@@ -157,6 +162,10 @@ model Volunteer {
   // (e.g. Lori) without making them a full ADMIN. ADMIN can always create events regardless
   // of this flag (see requireCanScheduleEvents() in src/app/events/actions.ts).
   canScheduleEvents     Boolean                    @default(false)
+  // V2.md Session 5: one code, two presentations — printed/scanned at the shared kiosk
+  // tablet, or QR-encoded on the volunteer's own device (src/app/checkin/code/page.tsx).
+  // Generated client-side by Prisma's cuid() default, same as every other id in this schema.
+  checkInCode           String                     @unique @default(cuid())
   notes                 String?
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
@@ -301,10 +310,55 @@ model Shift {
   id        String    @id @default(cuid())
   date      DateTime
   type      ShiftType
+  // V2.md Session 5: per-occurrence override of ShiftTemplate's resolved start/end — "we
+  // actually ran 15 minutes late today." "HH:MM" strings, same format as ShiftTemplate,
+  // nullable (falls back to the template's resolved time when unset). Settable by a
+  // SHIFT_LEAD or ADMIN for any occurrence — see setShiftActualTimes in
+  // src/app/checkin/actions.ts. Who/when is captured by ChangeLog (Shift is tracked), not a
+  // dedicated field on the row, same reasoning CONTEXT.md §10 gives for PastureAssignment.
+  actualStartTime String?
+  actualEndTime   String?
   createdAt DateTime  @default(now())
   checkIns  CheckIn[]
 
   @@unique([date, type])
+}
+
+// V2.md Session 5: singleton config row (enforced app-side via getFarmSettings() in
+// src/lib/farmSettings.ts — findFirst-or-create, same "app-side simplicity over a DB
+// constraint" preference as everything else admin-entered in this schema). A manual
+// switch, not date-driven automation — farm staff decide when to flip it based on
+// daylight/weather, per V2.md's explicit framing.
+model FarmSettings {
+  id           String     @id @default(cuid())
+  activeSeason FarmSeason @default(STANDARD)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+// V2.md Session 5: reference times for the two real shift occurrences a day. shiftType
+// ties each template row directly to the existing ShiftType enum (AM/PM) — an addition
+// beyond V2.md's literal field list, needed so a Shift's `type` can look up its matching
+// template without a fragile match on `name`. Since ShiftType is a fixed two-value enum
+// (CONTEXT.md §3: hard enums for things fixed by real-world logic), this table is
+// necessarily capped at two rows — edit-only via /settings, no create/delete UI, same
+// precedent as TierThreshold's fixed four rows. Not ChangeLog-tracked: admin-managed
+// config/lookup data, same category as TierThreshold/Location, per CLAUDE.md's tracked-
+// models list.
+model ShiftTemplate {
+  id                String    @id @default(cuid())
+  name              String
+  shiftType         ShiftType @unique
+  // "HH:MM" 24-hour, no date component — plain strings round-trip cleanly through a native
+  // <input type="time">, avoiding Prisma/Postgres @db.Time gymnastics for a value nothing
+  // ever does arithmetic on (CLAUDE.md's "simplicity over cleverness" for a project meant
+  // to stay maintainable by one person).
+  standardStartTime String
+  standardEndTime   String
+  winterStartTime   String?
+  winterEndTime     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model WorkType {
