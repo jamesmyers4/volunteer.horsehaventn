@@ -4,12 +4,13 @@ import { Resend } from "resend"
 // waitlist-promotion notifications). CONTEXT.md §7 already earmarks Resend for credential/
 // training expiration reminders too; this wrapper is generic enough to cover that later.
 //
-// RESEND_API_KEY is present-but-blank in this project's .env as of this session (Resend was
-// never actually wired up before now) — unlike src/lib/r2.ts's hard throw-if-unset (R2
-// genuinely is configured and load-bearing), a missing key here degrades to a no-op rather
-// than crashing. This module is imported at Next.js build time by every page/action that
-// touches events, so a hard throw here would break `next build` for the whole app over an
-// unset *optional* notification feature — confirmed the hard way, see HANDOFF.md.
+// RESEND_API_KEY is now set in this project's .env (a real key, created for volunteerOps in
+// Resend, added shortly after this file was first written) — but a missing key here still
+// degrades to a no-op rather than crashing, unlike src/lib/r2.ts's hard throw-if-unset. This
+// module is imported at Next.js build time by every page/action that touches events, so a
+// hard throw would break `next build` for the whole app over an unset *optional* notification
+// feature the moment the key goes missing again (a fresh clone, a wiped .env, a different
+// deploy environment) — confirmed the hard way once already, see HANDOFF.md.
 const apiKey = process.env.RESEND_API_KEY
 const resend = apiKey ? new Resend(apiKey) : null
 
