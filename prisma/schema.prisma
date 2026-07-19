@@ -42,7 +42,7 @@ enum CheckMethod {
   LEGACY_FORM
 }
 
-enum HorseStatus {
+enum AnimalStatus {
   ACTIVE
   ADOPTED
   RETURNED
@@ -50,7 +50,7 @@ enum HorseStatus {
   TRANSFERRED
 }
 
-enum HorseSex {
+enum AnimalSex {
   STALLION
   GELDING
   MARE
@@ -58,6 +58,16 @@ enum HorseSex {
   FILLY
   RIDGLING
   UNKNOWN
+}
+
+enum AnimalSpecies {
+  HORSE
+  DONKEY
+  MULE
+  MINI_HORSE
+  PONY
+  CAT
+  OTHER
 }
 
 enum FeedUnit {
@@ -98,29 +108,43 @@ enum ChangeLogAction {
   UPDATE
 }
 
+enum LocationType {
+  FIELD
+  BARN_STALL
+  SICK_BAY
+  ARENA
+  OTHER
+}
+
+enum LocationPeriod {
+  DAY
+  NIGHT
+}
+
 model Volunteer {
-  id                    String                    @id @default(cuid())
-  clerkId               String?                   @unique
+  id                    String                   @id @default(cuid())
+  clerkId               String?                  @unique
   name                  String
   email                 String?
   phone                 String?
   emergencyContactName  String?
   emergencyContactPhone String?
-  role                  Role                      @default(VOLUNTEER)
-  status                VolunteerStatus           @default(ACTIVE)
-  tier                  HandlingColor             @default(GREEN)
+  role                  Role                     @default(VOLUNTEER)
+  status                VolunteerStatus          @default(ACTIVE)
+  tier                  HandlingColor            @default(GREEN)
   tierUpdatedAt         DateTime?
   hireDate              DateTime?
   accessValidFrom       DateTime?
   accessValidUntil      DateTime?
   notes                 String?
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
   credentials           CredentialRecord[]
   regularShifts         RegularShiftAssignment[]
-  checkIns              CheckIn[]                 @relation("VolunteerCheckIns")
-  loggedCheckIns        CheckIn[]                 @relation("LoggedByVolunteer")
+  checkIns              CheckIn[]                @relation("VolunteerCheckIns")
+  loggedCheckIns        CheckIn[]                @relation("LoggedByVolunteer")
   sentMessages          ChatMessage[]
+  recordedLocationMoves AnimalLocationAssignment[]
 
   @@index([clerkId])
   @@index([role])
@@ -211,39 +235,40 @@ model CheckIn {
   @@index([checkInAt])
 }
 
-model Horse {
-  id                     String                   @id @default(cuid())
+model Animal {
+  id                     String                  @id @default(cuid())
   name                   String
+  species                AnimalSpecies           @default(HORSE)
   intakeDate             DateTime?
-  status                 HorseStatus              @default(ACTIVE)
-  sex                    HorseSex                 @default(UNKNOWN)
-  spayed                 Boolean                  @default(false)
-  legalCase              Boolean                  @default(false)
+  status                 AnimalStatus            @default(ACTIVE)
+  sex                    AnimalSex               @default(UNKNOWN)
+  spayed                 Boolean                 @default(false)
+  legalCase              Boolean                 @default(false)
   caseReference          String?
-  requiredHandlerColor   HandlingColor            @default(GREEN)
+  requiredHandlerColor   HandlingColor           @default(GREEN)
   handlingNotes          String?
   notes                  String?
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
-  photos                 HorsePhoto[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  photos                 AnimalPhoto[]
   placements             Placement[]
   feedingBaselines       FeedingBaseline[]
   medicationRegimens     MedicationRegimen[]
   careEntries            CareEntry[]
   healthIssues           HealthIssue[]
   recurringCareSchedules RecurringCareSchedule[]
-  metrics                HorseMetric[]
+  metrics                AnimalMetric[]
   weightEntries          WeightEntry[]
-  pastureAssignments     PastureAssignment[]
+  locationAssignments    AnimalLocationAssignment[]
   donations              DonationInKind[]
 
   @@index([status])
   @@index([legalCase])
 }
 
-model HorsePhoto {
+model AnimalPhoto {
   id                String    @id @default(cuid())
-  horseId           String
+  animalId          String
   url               String
   type              String
   isPrimary         Boolean   @default(false)
@@ -252,15 +277,15 @@ model HorsePhoto {
   relatedEntityType String?
   relatedEntityId   String?
   createdAt         DateTime  @default(now())
-  horse             Horse     @relation(fields: [horseId], references: [id])
+  animal            Animal    @relation(fields: [animalId], references: [id])
 
-  @@index([horseId])
+  @@index([animalId])
   @@index([relatedEntityType, relatedEntityId])
 }
 
 model Placement {
   id               String    @id @default(cuid())
-  horseId          String
+  animalId         String
   adopterName      String
   adopterContact   String?
   placedDate       DateTime
@@ -270,9 +295,9 @@ model Placement {
   notes            String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  horse            Horse     @relation(fields: [horseId], references: [id])
+  animal           Animal    @relation(fields: [animalId], references: [id])
 
-  @@index([horseId])
+  @@index([animalId])
   @@index([nextFollowUpDate])
 }
 
@@ -288,7 +313,7 @@ model FeedType {
 
 model FeedingBaseline {
   id              String            @id @default(cuid())
-  horseId         String
+  animalId        String
   feedTypeId      String
   shift           ShiftType
   amount          Decimal           @db.Decimal(4, 2)
@@ -296,11 +321,11 @@ model FeedingBaseline {
   notes           String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
-  horse           Horse             @relation(fields: [horseId], references: [id])
+  animal          Animal            @relation(fields: [animalId], references: [id])
   feedType        FeedType          @relation(fields: [feedTypeId], references: [id])
   overrides       FeedingOverride[]
 
-  @@index([horseId])
+  @@index([animalId])
   @@index([feedTypeId])
 }
 
@@ -321,7 +346,7 @@ model FeedingOverride {
 
 model MedicationRegimen {
   id        String          @id @default(cuid())
-  horseId   String
+  animalId  String
   drugName  String
   dose      String
   route     String?
@@ -331,50 +356,50 @@ model MedicationRegimen {
   notes     String?
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
-  horse     Horse           @relation(fields: [horseId], references: [id])
+  animal    Animal          @relation(fields: [animalId], references: [id])
   logs      MedicationLog[]
 
-  @@index([horseId])
+  @@index([animalId])
 }
 
 model MedicationLog {
-  id                  String             @id @default(cuid())
+  id                  String            @id @default(cuid())
   medicationRegimenId String
   date                DateTime
   administered        Boolean
   administeredBy      String
   notes               String?
-  createdAt           DateTime           @default(now())
-  medicationRegimen   MedicationRegimen  @relation(fields: [medicationRegimenId], references: [id])
+  createdAt           DateTime          @default(now())
+  medicationRegimen   MedicationRegimen @relation(fields: [medicationRegimenId], references: [id])
 
   @@index([medicationRegimenId])
   @@index([date])
 }
 
 model CareType {
-  id                 String                   @id @default(cuid())
+  id                 String                  @id @default(cuid())
   name               String
   category           CareCategory
-  active             Boolean                  @default(true)
-  createdAt          DateTime                 @default(now())
+  active             Boolean                 @default(true)
+  createdAt          DateTime                @default(now())
   careEntries        CareEntry[]
   recurringSchedules RecurringCareSchedule[]
 }
 
 model CareEntry {
   id                   String       @id @default(cuid())
-  horseId              String
+  animalId             String
   careTypeId           String
   date                 DateTime
   notes                String?
   performedBy          String
   relatedHealthIssueId String?
   createdAt            DateTime     @default(now())
-  horse                Horse        @relation(fields: [horseId], references: [id])
+  animal               Animal       @relation(fields: [animalId], references: [id])
   careType             CareType     @relation(fields: [careTypeId], references: [id])
   healthIssue          HealthIssue? @relation(fields: [relatedHealthIssueId], references: [id])
 
-  @@index([horseId])
+  @@index([animalId])
   @@index([careTypeId])
   @@index([date])
   @@index([relatedHealthIssueId])
@@ -382,23 +407,23 @@ model CareEntry {
 
 model HealthIssue {
   id           String      @id @default(cuid())
-  horseId      String
+  animalId     String
   description  String
   startDate    DateTime
   resolvedDate DateTime?
   active       Boolean     @default(true)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
-  horse        Horse       @relation(fields: [horseId], references: [id])
+  animal       Animal      @relation(fields: [animalId], references: [id])
   careEntries  CareEntry[]
 
-  @@index([horseId])
+  @@index([animalId])
   @@index([active])
 }
 
 model RecurringCareSchedule {
   id                String    @id @default(cuid())
-  horseId           String
+  animalId          String
   careTypeId        String
   cadenceDays       Int?
   lastCompletedDate DateTime?
@@ -406,80 +431,100 @@ model RecurringCareSchedule {
   notes             String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-  horse             Horse     @relation(fields: [horseId], references: [id])
+  animal            Animal    @relation(fields: [animalId], references: [id])
   careType          CareType  @relation(fields: [careTypeId], references: [id])
 
-  @@index([horseId])
+  @@index([animalId])
   @@index([nextDueDate])
 }
 
 model MetricType {
-  id        String        @id @default(cuid())
+  id        String         @id @default(cuid())
   name      String
   unit      String
-  active    Boolean       @default(true)
-  createdAt DateTime      @default(now())
-  metrics   HorseMetric[]
+  active    Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  metrics   AnimalMetric[]
 }
 
-model HorseMetric {
+model AnimalMetric {
   id           String     @id @default(cuid())
-  horseId      String
+  animalId     String
   metricTypeId String
   value        Decimal    @db.Decimal(4, 1)
   date         DateTime
   recordedBy   String
   notes        String?
   createdAt    DateTime   @default(now())
-  horse        Horse      @relation(fields: [horseId], references: [id])
+  animal       Animal     @relation(fields: [animalId], references: [id])
   metricType   MetricType @relation(fields: [metricTypeId], references: [id])
 
-  @@index([horseId])
+  @@index([animalId])
   @@index([metricTypeId])
   @@index([date])
 }
 
 model WeightEntry {
   id         String        @id @default(cuid())
-  horseId    String
+  animalId   String
   date       DateTime
   weight     Decimal       @db.Decimal(6, 1)
   context    WeightContext @default(ROUTINE)
   recordedBy String
   notes      String?
   createdAt  DateTime      @default(now())
-  horse      Horse         @relation(fields: [horseId], references: [id])
+  animal     Animal        @relation(fields: [animalId], references: [id])
 
-  @@index([horseId])
+  @@index([animalId])
   @@index([date])
 }
 
-model Field {
-  id             String               @id @default(cuid())
-  code           String               @unique
-  description    String?
+// Generalized (V2.md Session 1) from the Phase-1 Field-only model to also cover barn
+// stalls, sick bay, and the covered arena. `fieldCode`/`turnoutOrder`/`bringInOrder`/
+// `boundaryPoints` stay FIELD-specific (nullable, unused by other types); `barnNumber`/
+// `stallNumber` are BARN_STALL-specific. Validated per-type at the Server Action layer,
+// not via a DB constraint (matches this project's general preference for app-side checks
+// over fighting Postgres for rarely-changing admin-entered data).
+model Location {
+  id             String                     @id @default(cuid())
+  type           LocationType               @default(FIELD)
+  name           String
+  fieldCode      String?                    @unique
+  barnNumber     Int?
+  stallNumber    Int?
   boundaryPoints Json?
   turnoutOrder   Int?
   bringInOrder   Int?
-  active         Boolean              @default(true)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  assignments    PastureAssignment[]
+  isActive       Boolean                    @default(true)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  assignments    AnimalLocationAssignment[]
+
+  @@index([type])
 }
 
-model PastureAssignment {
-  id        String    @id @default(cuid())
-  horseId   String
-  fieldId   String
-  startDate DateTime
-  endDate   DateTime?
-  createdAt DateTime  @default(now())
-  horse     Horse     @relation(fields: [horseId], references: [id])
-  field     Field     @relation(fields: [fieldId], references: [id])
+// Append-only (V2.md Session 1): a move is always a new row, never an update to an old
+// one. "Current location" for an animal+period is derived as the latest `effectiveAt` row
+// for that pair — there is deliberately no stored "current" pointer that could drift.
+// Not a ChangeLog-tracked model: unlike the `PastureAssignment` it replaces (which relied
+// on ChangeLog to capture who/when since the row itself didn't), this row captures
+// `recordedById`/`effectiveAt` directly — same reasoning CLAUDE.md already gives for why
+// `AnimalPhoto` sits outside the tracked-models list.
+model AnimalLocationAssignment {
+  id           String         @id @default(cuid())
+  animalId     String
+  locationId   String
+  period       LocationPeriod @default(DAY)
+  effectiveAt  DateTime
+  recordedById String
+  notes        String?
+  createdAt    DateTime       @default(now())
+  animal       Animal         @relation(fields: [animalId], references: [id])
+  location     Location       @relation(fields: [locationId], references: [id])
+  recordedBy   Volunteer      @relation(fields: [recordedById], references: [id])
 
-  @@index([horseId])
-  @@index([fieldId])
-  @@index([endDate])
+  @@index([animalId, period, effectiveAt])
+  @@index([locationId])
 }
 
 model DonationInKind {
@@ -487,13 +532,13 @@ model DonationInKind {
   item            String
   donor           String?
   dateReceived    DateTime
-  linkedHorseId   String?
+  linkedAnimalId  String?
   linkedProjectId String?
   notes           String?
   createdAt       DateTime @default(now())
-  horse           Horse?   @relation(fields: [linkedHorseId], references: [id])
+  animal          Animal?  @relation(fields: [linkedAnimalId], references: [id])
 
-  @@index([linkedHorseId])
+  @@index([linkedAnimalId])
 }
 
 model ChatChannel {

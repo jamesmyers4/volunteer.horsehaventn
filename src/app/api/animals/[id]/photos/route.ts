@@ -7,7 +7,7 @@ import { r2, R2_BUCKET_NAME, R2_PUBLIC_URL } from "@/lib/r2"
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const volunteer = await requireVolunteer()
-  const { id: horseId } = await context.params
+  const { id: animalId } = await context.params
 
   const formData = await req.formData()
   const file = formData.get("file") as File | null
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   }
 
   const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_")
-  const key = `horses/${horseId}/${Date.now()}-${safeName}`
+  const key = `animals/${animalId}/${Date.now()}-${safeName}`
   const buffer = Buffer.from(await file.arrayBuffer())
 
   await r2.send(
@@ -34,12 +34,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   const url = `${R2_PUBLIC_URL}/${key}`
 
   if (isPrimary) {
-    await prisma.horsePhoto.updateMany({ where: { horseId, type, isPrimary: true }, data: { isPrimary: false } })
+    await prisma.animalPhoto.updateMany({ where: { animalId, type, isPrimary: true }, data: { isPrimary: false } })
   }
 
-  await prisma.horsePhoto.create({
-    data: { horseId, url, type, isPrimary, takenAt: new Date(), uploadedBy: volunteer.id }
+  await prisma.animalPhoto.create({
+    data: { animalId, url, type, isPrimary, takenAt: new Date(), uploadedBy: volunteer.id }
   })
 
-  return NextResponse.redirect(new URL(`/horses/${horseId}`, req.url), { status: 303 })
+  return NextResponse.redirect(new URL(`/animals/${animalId}`, req.url), { status: 303 })
 }

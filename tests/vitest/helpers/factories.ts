@@ -24,10 +24,10 @@ export async function createVolunteer(
   })
 }
 
-export async function createHorse(
+export async function createAnimal(
   overrides: Partial<{ name: string; status: "ACTIVE" | "ADOPTED" | "RETURNED" | "DECEASED" | "TRANSFERRED" }> = {}
 ) {
-  return prisma.horse.create({
+  return prisma.animal.create({
     data: {
       name: overrides.name ?? `Test Horse ${randomUUID().slice(0, 8)}`,
       status: overrides.status ?? "ACTIVE"
@@ -41,4 +41,4 @@ export const getFeedType = (name = "Senior") => prisma.feedType.findFirstOrThrow
 export const getWorkType = (name = "Regular Shift") => prisma.workType.findFirstOrThrow({ where: { name } })
 export const getCareType = (name = "Wound Check") => prisma.careType.findFirstOrThrow({ where: { name } })
 export const getMetricType = (name = "Height") => prisma.metricType.findFirstOrThrow({ where: { name } })
-export const getField = (code = "L1") => prisma.field.findFirstOrThrow({ where: { code } })
+export const getLocation = (fieldCode = "L1") => prisma.location.findFirstOrThrow({ where: { fieldCode } })

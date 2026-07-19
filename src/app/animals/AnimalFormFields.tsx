@@ -1,4 +1,4 @@
-type HorseDefaults = {
+type AnimalDefaults = {
   name?: string
   intakeDate?: Date | null
   status?: string
@@ -11,7 +11,7 @@ type HorseDefaults = {
   notes?: string | null
 }
 
-export function HorseFormFields({ defaults }: { defaults?: HorseDefaults }) {
+export function AnimalFormFields({ defaults }: { defaults?: AnimalDefaults }) {
   const intakeDateValue = defaults?.intakeDate ? defaults.intakeDate.toISOString().slice(0, 10) : ""
 
   return (

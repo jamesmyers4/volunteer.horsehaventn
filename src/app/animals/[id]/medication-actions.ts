@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { requireRole } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 
-export async function createMedicationRegimen(horseId: string, formData: FormData) {
+export async function createMedicationRegimen(animalId: string, formData: FormData) {
   const volunteer = await requireRole(["ADMIN"])
 
   const drugName = String(formData.get("drugName"))
@@ -17,13 +17,13 @@ export async function createMedicationRegimen(horseId: string, formData: FormDat
   const today = new Date(new Date().toISOString().slice(0, 10))
 
   await withChangeLog(prisma, volunteer.id, "Medication regimen added").medicationRegimen.create({
-    data: { horseId, drugName, dose, route, frequency, startDate: today, notes }
+    data: { animalId, drugName, dose, route, frequency, startDate: today, notes }
   })
 
-  redirect(`/horses/${horseId}`)
+  redirect(`/animals/${animalId}`)
 }
 
-export async function endMedicationRegimen(regimenId: string, horseId: string) {
+export async function endMedicationRegimen(regimenId: string, animalId: string) {
   const volunteer = await requireRole(["ADMIN"])
   const today = new Date(new Date().toISOString().slice(0, 10))
 
@@ -32,10 +32,10 @@ export async function endMedicationRegimen(regimenId: string, horseId: string) {
     data: { endDate: today }
   })
 
-  redirect(`/horses/${horseId}`)
+  redirect(`/animals/${animalId}`)
 }
 
-export async function logMedicationAdministered(regimenId: string, horseId: string, formData: FormData) {
+export async function logMedicationAdministered(regimenId: string, animalId: string, formData: FormData) {
   const volunteer = await requireRole(["ADMIN", "SHIFT_LEAD"])
 
   const administered = formData.get("administered") === "true"
@@ -47,5 +47,5 @@ export async function logMedicationAdministered(regimenId: string, horseId: stri
     data: { medicationRegimenId: regimenId, date: today, administered, administeredBy: volunteer.id, notes }
   })
 
-  redirect(`/horses/${horseId}`)
+  redirect(`/animals/${animalId}`)
 }

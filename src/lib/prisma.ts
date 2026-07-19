@@ -10,7 +10,7 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter })
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
 
 const trackedModels = [
-  "Horse",
+  "Animal",
   "Volunteer",
   "FeedingBaseline",
   "FeedingOverride",
@@ -19,8 +19,7 @@ const trackedModels = [
   "CareEntry",
   "HealthIssue",
   "WeightEntry",
-  "HorseMetric",
-  "PastureAssignment",
+  "AnimalMetric",
   "Placement",
   "CredentialRecord",
   "CheckIn"

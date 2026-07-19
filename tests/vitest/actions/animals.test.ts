@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest"
-import { createHorse as createHorseAction, updateHorse } from "@/app/horses/actions"
+import { createAnimal as createAnimalAction, updateAnimal } from "@/app/animals/actions"
 import { prisma } from "@/lib/prisma"
 import { mockSignedInAs } from "../helpers/auth-mock"
-import { createHorse, createVolunteer } from "../helpers/factories"
+import { createAnimal, createVolunteer } from "../helpers/factories"
 import { formData } from "../helpers/form"
 import { captureRedirect } from "../helpers/signals"
 
@@ -13,18 +13,18 @@ const baseFields = {
   requiredHandlerColor: "GREEN"
 }
 
-describe("createHorse", () => {
+describe("createAnimal", () => {
   it("is Admin-only — Shift Lead is rejected and nothing is written", async () => {
     await createVolunteer({ clerkId: "clerk_lead_h", role: "SHIFT_LEAD" })
     mockSignedInAs("clerk_lead_h")
-    await expect(createHorseAction(formData(baseFields))).rejects.toThrow("Not authorized")
-    expect(await prisma.horse.count()).toBe(0)
+    await expect(createAnimalAction(formData(baseFields))).rejects.toThrow("Not authorized")
+    expect(await prisma.animal.count()).toBe(0)
   })
 
   it("is Admin-only — Volunteer is rejected", async () => {
     await createVolunteer({ clerkId: "clerk_vol_h", role: "VOLUNTEER" })
     mockSignedInAs("clerk_vol_h")
-    await expect(createHorseAction(formData(baseFields))).rejects.toThrow("Not authorized")
+    await expect(createAnimalAction(formData(baseFields))).rejects.toThrow("Not authorized")
   })
 
   it("creates the horse and redirects to its detail page for an Admin", async () => {
@@ -32,7 +32,7 @@ describe("createHorse", () => {
     mockSignedInAs("clerk_admin_h")
 
     const url = await captureRedirect(() =>
-      createHorseAction(
+      createAnimalAction(
         formData({
           ...baseFields,
           spayed: "on",
@@ -44,57 +44,57 @@ describe("createHorse", () => {
       )
     )
 
-    const horse = await prisma.horse.findFirstOrThrow({ where: { name: "Winter" } })
-    expect(url).toBe(`/horses/${horse.id}`)
-    expect(horse.spayed).toBe(true)
-    expect(horse.legalCase).toBe(true)
-    expect(horse.caseReference).toBe("HH-2026-04")
-    expect(horse.handlingNotes).toBe("Head-shy, approach from the left")
-    expect(horse.intakeDate?.toISOString()).toContain("2026-01-05")
+    const animal = await prisma.animal.findFirstOrThrow({ where: { name: "Winter" } })
+    expect(url).toBe(`/animals/${animal.id}`)
+    expect(animal.spayed).toBe(true)
+    expect(animal.legalCase).toBe(true)
+    expect(animal.caseReference).toBe("HH-2026-04")
+    expect(animal.handlingNotes).toBe("Head-shy, approach from the left")
+    expect(animal.intakeDate?.toISOString()).toContain("2026-01-05")
   })
 
   it("leaves optional fields null when checkboxes are unchecked and text fields blank", async () => {
     await createVolunteer({ clerkId: "clerk_admin_h2", role: "ADMIN" })
     mockSignedInAs("clerk_admin_h2")
 
-    await captureRedirect(() => createHorseAction(formData(baseFields)))
+    await captureRedirect(() => createAnimalAction(formData(baseFields)))
 
-    const horse = await prisma.horse.findFirstOrThrow({ where: { name: "Winter" } })
-    expect(horse.spayed).toBe(false)
-    expect(horse.legalCase).toBe(false)
-    expect(horse.caseReference).toBeNull()
-    expect(horse.intakeDate).toBeNull()
+    const animal = await prisma.animal.findFirstOrThrow({ where: { name: "Winter" } })
+    expect(animal.spayed).toBe(false)
+    expect(animal.legalCase).toBe(false)
+    expect(animal.caseReference).toBeNull()
+    expect(animal.intakeDate).toBeNull()
   })
 })
 
-describe("updateHorse", () => {
+describe("updateAnimal", () => {
   it("is Admin-only — Shift Lead is rejected and the record is unchanged", async () => {
-    const horse = await createHorse({ name: "Original" })
+    const animal = await createAnimal({ name: "Original" })
     await createVolunteer({ clerkId: "clerk_lead_u", role: "SHIFT_LEAD" })
     mockSignedInAs("clerk_lead_u")
 
-    await expect(updateHorse(horse.id, formData({ ...baseFields, name: "Renamed" }))).rejects.toThrow("Not authorized")
+    await expect(updateAnimal(animal.id, formData({ ...baseFields, name: "Renamed" }))).rejects.toThrow("Not authorized")
 
-    const unchanged = await prisma.horse.findUniqueOrThrow({ where: { id: horse.id } })
+    const unchanged = await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })
     expect(unchanged.name).toBe("Original")
   })
 
   it("updates fields and logs a field-level diff for an Admin", async () => {
-    const horse = await createHorse({ name: "Original", status: "ACTIVE" })
+    const animal = await createAnimal({ name: "Original", status: "ACTIVE" })
     await createVolunteer({ clerkId: "clerk_admin_u", role: "ADMIN" })
     mockSignedInAs("clerk_admin_u")
 
     const url = await captureRedirect(() =>
-      updateHorse(horse.id, formData({ ...baseFields, name: "Renamed", status: "ADOPTED" }))
+      updateAnimal(animal.id, formData({ ...baseFields, name: "Renamed", status: "ADOPTED" }))
     )
 
-    expect(url).toBe(`/horses/${horse.id}`)
-    const updated = await prisma.horse.findUniqueOrThrow({ where: { id: horse.id } })
+    expect(url).toBe(`/animals/${animal.id}`)
+    const updated = await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })
     expect(updated.name).toBe("Renamed")
     expect(updated.status).toBe("ADOPTED")
 
     const nameChange = await prisma.changeLog.findFirst({
-      where: { entityType: "Horse", entityId: horse.id, field: "name", action: "UPDATE" }
+      where: { entityType: "Animal", entityId: animal.id, field: "name", action: "UPDATE" }
     })
     expect(nameChange).toMatchObject({ oldValue: "Original", newValue: "Renamed" })
   })

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { requireRole } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 
-function readHorseFields(formData: FormData) {
+function readAnimalFields(formData: FormData) {
   const intakeDateRaw = formData.get("intakeDate")
   const caseReferenceRaw = formData.get("caseReference")
   const handlingNotesRaw = formData.get("handlingNotes")
@@ -24,25 +24,25 @@ function readHorseFields(formData: FormData) {
   }
 }
 
-export async function createHorse(formData: FormData) {
+export async function createAnimal(formData: FormData) {
   const volunteer = await requireRole(["ADMIN"])
-  const fields = readHorseFields(formData)
+  const fields = readAnimalFields(formData)
 
-  const horse = await withChangeLog(prisma, volunteer.id, "Horse intake").horse.create({
+  const animal = await withChangeLog(prisma, volunteer.id, "Horse intake").animal.create({
     data: fields
   })
 
-  redirect(`/horses/${horse.id}`)
+  redirect(`/animals/${animal.id}`)
 }
 
-export async function updateHorse(horseId: string, formData: FormData) {
+export async function updateAnimal(animalId: string, formData: FormData) {
   const volunteer = await requireRole(["ADMIN"])
-  const fields = readHorseFields(formData)
+  const fields = readAnimalFields(formData)
 
-  await withChangeLog(prisma, volunteer.id, "Horse record updated").horse.update({
-    where: { id: horseId },
+  await withChangeLog(prisma, volunteer.id, "Horse record updated").animal.update({
+    where: { id: animalId },
     data: fields
   })
 
-  redirect(`/horses/${horseId}`)
+  redirect(`/animals/${animalId}`)
 }

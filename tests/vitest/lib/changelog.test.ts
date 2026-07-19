@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { prisma, withChangeLog } from "@/lib/prisma"
-import { createHorse, createVolunteer } from "../helpers/factories"
+import { createAnimal, createVolunteer } from "../helpers/factories"
 
 function entriesFor(entityType: string, entityId: string) {
   return prisma.changeLog.findMany({ where: { entityType, entityId }, orderBy: { field: "asc" } })
@@ -8,11 +8,11 @@ function entriesFor(entityType: string, entityId: string) {
 
 describe("withChangeLog — CREATE", () => {
   it("writes one row per field, with oldValue null and action CREATE, on a tracked model", async () => {
-    const horse = await withChangeLog(prisma, "changer-1", "intake").horse.create({
+    const animal = await withChangeLog(prisma, "changer-1", "intake").animal.create({
       data: { name: "Remus", status: "ACTIVE", sex: "GELDING" }
     })
 
-    const entries = await entriesFor("Horse", horse.id)
+    const entries = await entriesFor("Animal", animal.id)
     expect(entries.length).toBeGreaterThan(0)
     expect(entries.every((e) => e.action === "CREATE")).toBe(true)
     expect(entries.every((e) => e.oldValue === null)).toBe(true)
@@ -24,8 +24,8 @@ describe("withChangeLog — CREATE", () => {
   })
 
   it("excludes the id field itself from the logged fields", async () => {
-    const horse = await withChangeLog(prisma, "changer-1").horse.create({ data: { name: "Aries" } })
-    const entries = await entriesFor("Horse", horse.id)
+    const animal = await withChangeLog(prisma, "changer-1").animal.create({ data: { name: "Aries" } })
+    const entries = await entriesFor("Animal", animal.id)
     expect(entries.find((e) => e.field === "id")).toBeUndefined()
   })
 
@@ -41,22 +41,22 @@ describe("withChangeLog — CREATE", () => {
   })
 
   it("still returns the created row, unaffected by logging", async () => {
-    const horse = await withChangeLog(prisma, "changer-1").horse.create({ data: { name: "Comet" } })
-    expect(horse.name).toBe("Comet")
-    expect(horse.id).toBeTruthy()
+    const animal = await withChangeLog(prisma, "changer-1").animal.create({ data: { name: "Comet" } })
+    expect(animal.name).toBe("Comet")
+    expect(animal.id).toBeTruthy()
   })
 })
 
 describe("withChangeLog — UPDATE", () => {
   it("logs only the fields that actually changed, with correct old/new values", async () => {
-    const horse = await prisma.horse.create({ data: { name: "Bishop", status: "ACTIVE", notes: "original" } })
+    const animal = await prisma.animal.create({ data: { name: "Bishop", status: "ACTIVE", notes: "original" } })
 
-    await withChangeLog(prisma, "changer-2", "correction").horse.update({
-      where: { id: horse.id },
+    await withChangeLog(prisma, "changer-2", "correction").animal.update({
+      where: { id: animal.id },
       data: { notes: "updated", status: "ACTIVE" }
     })
 
-    const entries = await entriesFor("Horse", horse.id)
+    const entries = await entriesFor("Animal", animal.id)
     expect(entries).toHaveLength(1)
     expect(entries[0].field).toBe("notes")
     expect(entries[0].oldValue).toBe("original")
@@ -67,11 +67,11 @@ describe("withChangeLog — UPDATE", () => {
   })
 
   it("writes nothing when the update changes no tracked field's value", async () => {
-    const horse = await prisma.horse.create({ data: { name: "Nova", status: "ACTIVE" } })
+    const animal = await prisma.animal.create({ data: { name: "Nova", status: "ACTIVE" } })
     const before = await prisma.changeLog.count()
 
-    await withChangeLog(prisma, "changer-2").horse.update({
-      where: { id: horse.id },
+    await withChangeLog(prisma, "changer-2").animal.update({
+      where: { id: animal.id },
       data: { status: "ACTIVE" }
     })
 
@@ -80,22 +80,22 @@ describe("withChangeLog — UPDATE", () => {
   })
 
   it("excludes updatedAt from diffing even though it changes on every write", async () => {
-    const horse = await prisma.horse.create({ data: { name: "Zephyr" } })
-    await withChangeLog(prisma, "changer-2").horse.update({
-      where: { id: horse.id },
+    const animal = await prisma.animal.create({ data: { name: "Zephyr" } })
+    await withChangeLog(prisma, "changer-2").animal.update({
+      where: { id: animal.id },
       data: { name: "Zephyr II" }
     })
-    const entries = await entriesFor("Horse", horse.id)
+    const entries = await entriesFor("Animal", animal.id)
     expect(entries.find((e) => e.field === "updatedAt")).toBeUndefined()
     expect(entries.map((e) => e.field)).toEqual(["name"])
   })
 
   it("does not write ChangeLog rows for updates on an untracked model", async () => {
-    const photo = await prisma.horsePhoto.create({
-      data: { horseId: (await createHorse()).id, url: "https://example.com/a.jpg", type: "OTHER" }
+    const photo = await prisma.animalPhoto.create({
+      data: { animalId: (await createAnimal()).id, url: "https://example.com/a.jpg", type: "OTHER" }
     })
     const before = await prisma.changeLog.count()
-    await withChangeLog(prisma, "changer-2").horsePhoto.update({
+    await withChangeLog(prisma, "changer-2").animalPhoto.update({
       where: { id: photo.id },
       data: { isPrimary: true }
     })
@@ -103,12 +103,12 @@ describe("withChangeLog — UPDATE", () => {
   })
 
   it("is append-only across multiple corrections — earlier entries are never edited", async () => {
-    const horse = await prisma.horse.create({ data: { name: "Sable", notes: "v1" } })
-    await withChangeLog(prisma, "changer-a").horse.update({ where: { id: horse.id }, data: { notes: "v2" } })
-    await withChangeLog(prisma, "changer-b").horse.update({ where: { id: horse.id }, data: { notes: "v3" } })
+    const animal = await prisma.animal.create({ data: { name: "Sable", notes: "v1" } })
+    await withChangeLog(prisma, "changer-a").animal.update({ where: { id: animal.id }, data: { notes: "v2" } })
+    await withChangeLog(prisma, "changer-b").animal.update({ where: { id: animal.id }, data: { notes: "v3" } })
 
     const entries = await prisma.changeLog.findMany({
-      where: { entityType: "Horse", entityId: horse.id, field: "notes" },
+      where: { entityType: "Animal", entityId: animal.id, field: "notes" },
       orderBy: { createdAt: "asc" }
     })
     expect(entries).toHaveLength(2)
@@ -117,10 +117,10 @@ describe("withChangeLog — UPDATE", () => {
   })
 
   it("stringifies non-string field values (Decimal, boolean, null) consistently", async () => {
-    const horse = await createHorse()
+    const animal = await createAnimal()
     const baselineFeedType = await prisma.feedType.findFirstOrThrow({ where: { name: "Senior" } })
     const baseline = await withChangeLog(prisma, "changer-c").feedingBaseline.create({
-      data: { horseId: horse.id, feedTypeId: baselineFeedType.id, shift: "AM", amount: "1.5", requiresSoaking: true }
+      data: { animalId: animal.id, feedTypeId: baselineFeedType.id, shift: "AM", amount: "1.5", requiresSoaking: true }
     })
     const createEntries = await entriesFor("FeedingBaseline", baseline.id)
     expect(createEntries.find((e) => e.field === "amount")?.newValue).toBe("1.5")

@@ -1,6 +1,6 @@
 import { requireRole } from "@/lib/auth"
-import { HorseFormFields } from "../HorseFormFields"
-import { createHorse } from "../actions"
+import { AnimalFormFields } from "../AnimalFormFields"
+import { createAnimal } from "../actions"
 
 async function checkAccess() {
   try {
@@ -11,7 +11,7 @@ async function checkAccess() {
   }
 }
 
-export default async function NewHorsePage() {
+export default async function NewAnimalPage() {
   const authorized = await checkAccess()
 
   if (!authorized) {
@@ -26,8 +26,8 @@ export default async function NewHorsePage() {
   return (
     <main className="flex flex-1 flex-col items-center gap-4 p-8">
       <h1 className="text-xl font-semibold">Add horse</h1>
-      <form action={createHorse} className="flex w-full max-w-sm flex-col gap-3">
-        <HorseFormFields />
+      <form action={createAnimal} className="flex w-full max-w-sm flex-col gap-3">
+        <AnimalFormFields />
         <button type="submit" className="mt-2 rounded bg-black px-4 py-2 text-sm text-white">
           Create horse
         </button>

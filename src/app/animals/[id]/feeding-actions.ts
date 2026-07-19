@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { requireRole } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 
-export async function createFeedingBaseline(horseId: string, formData: FormData) {
+export async function createFeedingBaseline(animalId: string, formData: FormData) {
   const volunteer = await requireRole(["ADMIN"])
 
   const feedTypeId = String(formData.get("feedTypeId"))
@@ -15,13 +15,13 @@ export async function createFeedingBaseline(horseId: string, formData: FormData)
   const notes = notesRaw ? String(notesRaw) : undefined
 
   await withChangeLog(prisma, volunteer.id, "Feeding baseline added").feedingBaseline.create({
-    data: { horseId, feedTypeId, shift, amount, requiresSoaking, notes }
+    data: { animalId, feedTypeId, shift, amount, requiresSoaking, notes }
   })
 
-  redirect(`/horses/${horseId}`)
+  redirect(`/animals/${animalId}`)
 }
 
-export async function createFeedingOverride(baselineId: string, horseId: string, formData: FormData) {
+export async function createFeedingOverride(baselineId: string, animalId: string, formData: FormData) {
   const volunteer = await requireRole(["ADMIN", "SHIFT_LEAD"])
 
   const amountRaw = formData.get("amount")
@@ -36,5 +36,5 @@ export async function createFeedingOverride(baselineId: string, horseId: string,
     data: { feedingBaselineId: baselineId, date: today, amount, reason, changedBy: volunteer.id, notes }
   })
 
-  redirect(`/horses/${horseId}`)
+  redirect(`/animals/${animalId}`)
 }

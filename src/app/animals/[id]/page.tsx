@@ -5,24 +5,24 @@ import { prisma } from "@/lib/prisma"
 import { createFeedingBaseline, createFeedingOverride } from "./feeding-actions"
 import { createMedicationRegimen, endMedicationRegimen, logMedicationAdministered } from "./medication-actions"
 import { createCareEntry, createHealthIssue, resolveHealthIssue } from "./care-actions"
-import { createWeightEntry, createHorseMetric } from "./metrics-actions"
-import { assignPasture } from "./pasture-actions"
+import { createWeightEntry, createAnimalMetric } from "./metrics-actions"
+import { createLocationAssignment } from "./location-actions"
 
-export default async function HorseDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AnimalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const volunteer = await requireVolunteer()
   const { id } = await params
-  const horse = await prisma.horse.findUnique({ where: { id } })
+  const animal = await prisma.animal.findUnique({ where: { id } })
 
-  if (!horse) notFound()
+  if (!animal) notFound()
 
-  const photos = await prisma.horsePhoto.findMany({ where: { horseId: id }, orderBy: { takenAt: "desc" } })
+  const photos = await prisma.animalPhoto.findMany({ where: { animalId: id }, orderBy: { takenAt: "desc" } })
 
   const today = new Date(new Date().toISOString().slice(0, 10))
   const tomorrow = new Date(today)
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
 
   const feedingBaselines = await prisma.feedingBaseline.findMany({
-    where: { horseId: id },
+    where: { animalId: id },
     include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } } } },
     orderBy: [{ shift: "asc" }, { feedType: { name: "asc" } }]
   })
@@ -30,7 +30,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
   const feedTypes = await prisma.feedType.findMany({ where: { active: true }, orderBy: { name: "asc" } })
 
   const medicationRegimens = await prisma.medicationRegimen.findMany({
-    where: { horseId: id, OR: [{ endDate: null }, { endDate: { gte: today } }] },
+    where: { animalId: id, OR: [{ endDate: null }, { endDate: { gte: today } }] },
     include: { logs: { where: { date: { gte: today, lt: tomorrow } } } },
     orderBy: { drugName: "asc" }
   })
@@ -38,25 +38,25 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
   const careTypes = await prisma.careType.findMany({ where: { active: true }, orderBy: { name: "asc" } })
 
   const careEntries = await prisma.careEntry.findMany({
-    where: { horseId: id },
+    where: { animalId: id },
     include: { careType: true, healthIssue: true },
     orderBy: { date: "desc" },
     take: 15
   })
 
   const healthIssues = await prisma.healthIssue.findMany({
-    where: { horseId: id, active: true },
+    where: { animalId: id, active: true },
     orderBy: { startDate: "desc" }
   })
 
   const weightEntries = await prisma.weightEntry.findMany({
-    where: { horseId: id },
+    where: { animalId: id },
     orderBy: { date: "desc" },
     take: 10
   })
 
-  const horseMetrics = await prisma.horseMetric.findMany({
-    where: { horseId: id },
+  const animalMetrics = await prisma.animalMetric.findMany({
+    where: { animalId: id },
     include: { metricType: true },
     orderBy: { date: "desc" },
     take: 10
@@ -64,26 +64,28 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
 
   const metricTypes = await prisma.metricType.findMany({ where: { active: true }, orderBy: { name: "asc" } })
 
-  const currentPastureAssignment = await prisma.pastureAssignment.findFirst({
-    where: { horseId: id, endDate: null },
-    include: { field: true }
+  // Append-only (V2.md Session 1): "current" per period is derived as the latest
+  // effectiveAt row, not a stored pointer — full history stays queryable but is only
+  // surfaced behind the "View history" expand below, not shown by default.
+  const locationAssignments = await prisma.animalLocationAssignment.findMany({
+    where: { animalId: id },
+    include: { location: true },
+    orderBy: { effectiveAt: "desc" }
   })
+  const currentDayAssignment = locationAssignments.find((a) => a.period === "DAY")
+  const currentNightAssignment = locationAssignments.find((a) => a.period === "NIGHT")
 
-  const pastureHistory = await prisma.pastureAssignment.findMany({
-    where: { horseId: id, endDate: { not: null } },
-    include: { field: true },
-    orderBy: { startDate: "desc" },
-    take: 5
+  const locations = await prisma.location.findMany({
+    where: { isActive: true },
+    orderBy: [{ type: "asc" }, { fieldCode: "asc" }, { name: "asc" }]
   })
-
-  const fields = await prisma.field.findMany({ where: { active: true }, orderBy: { code: "asc" } })
 
   const performerIds = Array.from(
     new Set([
       ...medicationRegimens.flatMap((r) => r.logs.map((l) => l.administeredBy)),
       ...careEntries.map((e) => e.performedBy),
       ...weightEntries.map((w) => w.recordedBy),
-      ...horseMetrics.map((m) => m.recordedBy)
+      ...animalMetrics.map((m) => m.recordedBy)
     ])
   )
   const performers = await prisma.volunteer.findMany({ where: { id: { in: performerIds } } })
@@ -95,40 +97,40 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
   const canLogMedication = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
   const canManageCare = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
   const canLogMetrics = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
-  const canAssignPasture = volunteer.role === "ADMIN"
+  const canAssignLocation = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{horse.name}</h1>
-        <Link href={`/horses/${horse.id}/edit`} className="rounded border px-4 py-2 text-sm">
+        <h1 className="text-xl font-semibold">{animal.name}</h1>
+        <Link href={`/animals/${animal.id}/edit`} className="rounded border px-4 py-2 text-sm">
           Edit
         </Link>
       </div>
       <dl className="grid max-w-md grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <dt className="text-gray-500">Status</dt>
-        <dd>{horse.status}</dd>
+        <dd>{animal.status}</dd>
         <dt className="text-gray-500">Sex</dt>
         <dd>
-          {horse.sex}
-          {horse.spayed ? " (spayed)" : ""}
+          {animal.sex}
+          {animal.spayed ? " (spayed)" : ""}
         </dd>
         <dt className="text-gray-500">Intake date</dt>
-        <dd>{horse.intakeDate ? horse.intakeDate.toDateString() : "—"}</dd>
+        <dd>{animal.intakeDate ? animal.intakeDate.toDateString() : "—"}</dd>
         <dt className="text-gray-500">Handling color</dt>
-        <dd>{horse.requiredHandlerColor}</dd>
+        <dd>{animal.requiredHandlerColor}</dd>
         <dt className="text-gray-500">Legal case</dt>
-        <dd>{horse.legalCase ? horse.caseReference || "Yes" : "No"}</dd>
-        {horse.handlingNotes && (
+        <dd>{animal.legalCase ? animal.caseReference || "Yes" : "No"}</dd>
+        {animal.handlingNotes && (
           <>
             <dt className="text-gray-500">Handling notes</dt>
-            <dd>{horse.handlingNotes}</dd>
+            <dd>{animal.handlingNotes}</dd>
           </>
         )}
-        {horse.notes && (
+        {animal.notes && (
           <>
             <dt className="text-gray-500">Notes</dt>
-            <dd>{horse.notes}</dd>
+            <dd>{animal.notes}</dd>
           </>
         )}
       </dl>
@@ -137,11 +139,11 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
         <div className="flex flex-wrap gap-3">
           {photos.map((photo) => (
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={photo.id} src={photo.url} alt={`${horse.name} - ${photo.type}`} className="h-32 w-32 rounded object-cover" />
+            <img key={photo.id} src={photo.url} alt={`${animal.name} - ${photo.type}`} className="h-32 w-32 rounded object-cover" />
           ))}
           {photos.length === 0 && <p className="text-sm text-gray-500">No photos yet.</p>}
         </div>
-        <form action={`/api/horses/${horse.id}/photos`} method="post" encType="multipart/form-data" className="flex flex-col gap-2 text-sm">
+        <form action={`/api/animals/${animal.id}/photos`} method="post" encType="multipart/form-data" className="flex flex-col gap-2 text-sm">
           <input type="file" name="file" accept="image/*" required />
           <select name="type" className="rounded border px-2 py-1">
             <option value="PROFILE">Profile (headshot)</option>
@@ -173,7 +175,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
           <tbody>
             {feedingBaselines.map((baseline) => {
               const todayOverride = baseline.overrides[0]
-              const createOverrideForBaseline = createFeedingOverride.bind(null, baseline.id, horse.id)
+              const createOverrideForBaseline = createFeedingOverride.bind(null, baseline.id, animal.id)
               return (
                 <tr key={baseline.id} className="border-b align-top">
                   <td className="py-2">{baseline.shift}</td>
@@ -207,7 +209,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
         </table>
         {feedingBaselines.length === 0 && <p className="text-sm text-gray-500">No feeding plan set yet.</p>}
         {canManageBaseline && (
-          <form action={createFeedingBaseline.bind(null, horse.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+          <form action={createFeedingBaseline.bind(null, animal.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
             <h3 className="text-xs font-semibold text-gray-500">Add feeding baseline</h3>
             <select name="feedTypeId" required className="rounded border px-2 py-1">
               {feedTypes.map((feedType) => (
@@ -253,8 +255,8 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
           <tbody>
             {medicationRegimens.map((regimen) => {
               const todayLog = regimen.logs[0]
-              const logForRegimen = logMedicationAdministered.bind(null, regimen.id, horse.id)
-              const endForRegimen = endMedicationRegimen.bind(null, regimen.id, horse.id)
+              const logForRegimen = logMedicationAdministered.bind(null, regimen.id, animal.id)
+              const endForRegimen = endMedicationRegimen.bind(null, regimen.id, animal.id)
               return (
                 <tr key={regimen.id} className="border-b align-top">
                   <td className="py-2">{regimen.drugName}</td>
@@ -302,7 +304,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
         </table>
         {medicationRegimens.length === 0 && <p className="text-sm text-gray-500">No active medication regimens.</p>}
         {canManageMedicationRegimen && (
-          <form action={createMedicationRegimen.bind(null, horse.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+          <form action={createMedicationRegimen.bind(null, animal.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
             <h3 className="text-xs font-semibold text-gray-500">Add medication regimen</h3>
             <input type="text" name="drugName" placeholder="drug name" required className="rounded border px-2 py-1" />
             <input type="text" name="dose" placeholder="dose" required className="rounded border px-2 py-1" />
@@ -322,7 +324,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
           {healthIssues.length === 0 && <p className="text-sm text-gray-500">None open.</p>}
           <ul className="flex flex-col gap-2 text-sm">
             {healthIssues.map((issue) => {
-              const resolveForIssue = resolveHealthIssue.bind(null, issue.id, horse.id)
+              const resolveForIssue = resolveHealthIssue.bind(null, issue.id, animal.id)
               return (
                 <li key={issue.id} className="flex items-center justify-between gap-2 border-b pb-1">
                   <span>
@@ -355,7 +357,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
         </div>
         {canManageCare && (
           <div className="flex flex-wrap gap-6">
-            <form action={createCareEntry.bind(null, horse.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+            <form action={createCareEntry.bind(null, animal.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
               <h3 className="text-xs font-semibold text-gray-500">Log care entry</h3>
               <select name="careTypeId" required className="rounded border px-2 py-1">
                 {careTypes.map((careType) => (
@@ -377,7 +379,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
                 Log entry
               </button>
             </form>
-            <form action={createHealthIssue.bind(null, horse.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+            <form action={createHealthIssue.bind(null, animal.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
               <h3 className="text-xs font-semibold text-gray-500">Open health issue</h3>
               <input type="text" name="description" placeholder="description" required className="rounded border px-2 py-1" />
               <button type="submit" className="w-fit rounded border px-4 py-2 text-xs">
@@ -403,7 +405,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
               ))}
             </ul>
             {canLogMetrics && (
-              <form action={createWeightEntry.bind(null, horse.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
+              <form action={createWeightEntry.bind(null, animal.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
                 <input type="number" step="0.1" name="weight" placeholder="weight (lbs)" required className="rounded border px-2 py-1" />
                 <div className="flex gap-4">
                   <label className="flex items-center gap-1">
@@ -424,9 +426,9 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
           </div>
           <div className="flex flex-col gap-2">
             <h3 className="text-xs font-semibold text-gray-500">Other metrics</h3>
-            {horseMetrics.length === 0 && <p className="text-sm text-gray-500">No metrics logged yet.</p>}
+            {animalMetrics.length === 0 && <p className="text-sm text-gray-500">No metrics logged yet.</p>}
             <ul className="flex flex-col gap-1 text-sm">
-              {horseMetrics.map((metric) => (
+              {animalMetrics.map((metric) => (
                 <li key={metric.id} className="border-b pb-1">
                   <span className="text-gray-500">{metric.date.toDateString()}</span> — {metric.metricType.name}: {metric.value.toString()} —{" "}
                   {performerNames.get(metric.recordedBy) ?? metric.recordedBy}
@@ -435,7 +437,7 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
               ))}
             </ul>
             {canLogMetrics && (
-              <form action={createHorseMetric.bind(null, horse.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
+              <form action={createAnimalMetric.bind(null, animal.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
                 <select name="metricTypeId" required className="rounded border px-2 py-1">
                   {metricTypes.map((metricType) => (
                     <option key={metricType.id} value={metricType.id}>
@@ -454,41 +456,64 @@ export default async function HorseDetailPage({ params }: { params: Promise<{ id
         </div>
       </section>
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold">Field / Pasture</h2>
+        <h2 className="text-sm font-semibold">Location</h2>
         <p className="text-sm">
-          Currently in:{" "}
-          {currentPastureAssignment ? (
+          Day:{" "}
+          {currentDayAssignment ? (
             <span className="font-semibold">
-              {currentPastureAssignment.field.code} <span className="font-normal text-gray-500">(since {currentPastureAssignment.startDate.toDateString()})</span>
+              {currentDayAssignment.location.fieldCode ?? currentDayAssignment.location.name}{" "}
+              <span className="font-normal text-gray-500">(since {currentDayAssignment.effectiveAt.toDateString()})</span>
             </span>
           ) : (
             <span className="text-gray-500">unassigned</span>
           )}
         </p>
-        {pastureHistory.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <h3 className="text-xs font-semibold text-gray-500">History</h3>
-            <ul className="flex flex-col gap-1 text-sm">
-              {pastureHistory.map((assignment) => (
+        <p className="text-sm">
+          Night:{" "}
+          {currentNightAssignment ? (
+            <span className="font-semibold">
+              {currentNightAssignment.location.fieldCode ?? currentNightAssignment.location.name}{" "}
+              <span className="font-normal text-gray-500">(since {currentNightAssignment.effectiveAt.toDateString()})</span>
+            </span>
+          ) : (
+            <span className="text-gray-500">unassigned</span>
+          )}
+        </p>
+        {locationAssignments.length > 0 && (
+          <details>
+            <summary className="cursor-pointer text-xs font-semibold text-gray-500">View history</summary>
+            <ul className="mt-1 flex flex-col gap-1 text-sm">
+              {locationAssignments.map((assignment) => (
                 <li key={assignment.id} className="text-gray-500">
-                  {assignment.field.code}: {assignment.startDate.toDateString()} – {assignment.endDate?.toDateString()}
+                  {assignment.period}: {assignment.location.fieldCode ?? assignment.location.name} — {assignment.effectiveAt.toDateString()}
+                  {assignment.notes ? ` (${assignment.notes})` : ""}
                 </li>
               ))}
             </ul>
-          </div>
+          </details>
         )}
-        {canAssignPasture && (
-          <form action={assignPasture.bind(null, horse.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
-            <select name="fieldId" required className="rounded border px-2 py-1">
-              {fields.map((field) => (
-                <option key={field.id} value={field.id}>
-                  {field.code}
-                  {field.description ? ` — ${field.description}` : ""}
+        {canAssignLocation && (
+          <form action={createLocationAssignment.bind(null, animal.id)} className="flex w-full max-w-xs flex-col gap-2 text-sm">
+            <select name="locationId" required className="rounded border px-2 py-1">
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.fieldCode ?? location.name}
                 </option>
               ))}
             </select>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-1">
+                <input type="radio" name="period" value="DAY" defaultChecked required />
+                Day
+              </label>
+              <label className="flex items-center gap-1">
+                <input type="radio" name="period" value="NIGHT" required />
+                Night
+              </label>
+            </div>
+            <input type="text" name="notes" placeholder="notes" className="rounded border px-2 py-1" />
             <button type="submit" className="w-fit rounded bg-black px-4 py-2 text-xs text-white">
-              Move to field
+              Move
             </button>
           </form>
         )}

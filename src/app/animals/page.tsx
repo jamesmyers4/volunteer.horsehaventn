@@ -10,12 +10,12 @@ const statusColors: Record<string, string> = {
   TRANSFERRED: "bg-purple-100 text-purple-800"
 }
 
-export default async function HorsesPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+export default async function AnimalsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   await requireVolunteer()
   const { status } = await searchParams
   const showAll = status === "all"
 
-  const horses = await prisma.horse.findMany({
+  const animals = await prisma.animal.findMany({
     where: showAll ? {} : { status: "ACTIVE" },
     orderBy: { name: "asc" }
   })
@@ -24,15 +24,15 @@ export default async function HorsesPage({ searchParams }: { searchParams: Promi
     <main className="flex flex-1 flex-col gap-4 p-8">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Horses</h1>
-        <Link href="/horses/new" className="rounded bg-black px-4 py-2 text-sm text-white">
+        <Link href="/animals/new" className="rounded bg-black px-4 py-2 text-sm text-white">
           Add horse
         </Link>
       </div>
       <div className="flex gap-4 text-sm">
-        <Link href="/horses" className={!showAll ? "font-semibold underline" : "underline"}>
+        <Link href="/animals" className={!showAll ? "font-semibold underline" : "underline"}>
           Active only
         </Link>
-        <Link href="/horses?status=all" className={showAll ? "font-semibold underline" : "underline"}>
+        <Link href="/animals?status=all" className={showAll ? "font-semibold underline" : "underline"}>
           Show all
         </Link>
       </div>
@@ -46,23 +46,23 @@ export default async function HorsesPage({ searchParams }: { searchParams: Promi
           </tr>
         </thead>
         <tbody>
-          {horses.map((horse) => (
-            <tr key={horse.id} className="border-b">
+          {animals.map((animal) => (
+            <tr key={animal.id} className="border-b">
               <td className="py-2">
-                <Link href={`/horses/${horse.id}`} className="underline">
-                  {horse.name}
+                <Link href={`/animals/${animal.id}`} className="underline">
+                  {animal.name}
                 </Link>
               </td>
               <td className="py-2">
-                <span className={`rounded px-2 py-0.5 text-xs ${statusColors[horse.status]}`}>{horse.status}</span>
+                <span className={`rounded px-2 py-0.5 text-xs ${statusColors[animal.status]}`}>{animal.status}</span>
               </td>
-              <td className="py-2">{horse.sex}</td>
-              <td className="py-2">{horse.requiredHandlerColor}</td>
+              <td className="py-2">{animal.sex}</td>
+              <td className="py-2">{animal.requiredHandlerColor}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {horses.length === 0 && <p className="text-sm text-gray-500">No horses to show.</p>}
+      {animals.length === 0 && <p className="text-sm text-gray-500">No horses to show.</p>}
     </main>
   )
 }

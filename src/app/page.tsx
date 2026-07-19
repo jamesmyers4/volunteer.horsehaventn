@@ -18,11 +18,11 @@ export default function Home() {
           <Link href="/checkin" className="text-sm underline">
             Check in
           </Link>
-          <Link href="/horses" className="text-sm underline">
+          <Link href="/animals" className="text-sm underline">
             Horses
           </Link>
-          <Link href="/fields" className="text-sm underline">
-            Fields
+          <Link href="/locations" className="text-sm underline">
+            Locations
           </Link>
           <Link href="/admin" className="text-sm underline">
             Admin check

@@ -83,10 +83,10 @@ async function main() {
   ]
 
   for (const field of fieldCodes) {
-    await prisma.field.upsert({
-      where: { code: field.code },
+    await prisma.location.upsert({
+      where: { fieldCode: field.code },
       update: {},
-      create: field
+      create: { type: "FIELD", name: field.code, fieldCode: field.code, turnoutOrder: field.turnoutOrder, bringInOrder: field.bringInOrder }
     })
   }
 
