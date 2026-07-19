@@ -50,6 +50,19 @@ async function main() {
     create: { name: "Go Team", description: "Off-site outreach/tabling team.", minDaysSinceBlueRelease: 180 }
   })
 
+  // V2.md Session 4: admin-editable lookup, same category as WorkType/FeedType.
+  await prisma.eventCategory.createMany({
+    data: [
+      { name: "Fall Festival" },
+      { name: "Outreach/Tabling" },
+      { name: "Meetup" },
+      { name: "Training Class" },
+      { name: "General Volunteer Shift" },
+      { name: "Other" }
+    ],
+    skipDuplicates: true
+  })
+
   await prisma.feedType.createMany({
     data: [
       { name: "Senior", defaultUnit: "SCOOP", category: "MAIN_FEED" },

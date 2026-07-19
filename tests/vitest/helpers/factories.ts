@@ -45,3 +45,36 @@ export const getLocation = (fieldCode = "L1") => prisma.location.findFirstOrThro
 export const getTierThreshold = (tier: "GREEN" | "ORANGE" | "YELLOW" | "BLUE" = "BLUE") => prisma.tierThreshold.findFirstOrThrow({ where: { tier } })
 export const getCredentialType = (name = "Volunteer Manual Acknowledgment") => prisma.credentialType.findFirstOrThrow({ where: { name } })
 export const getVolunteerTag = (name = "Go Team") => prisma.volunteerTag.findFirstOrThrow({ where: { name } })
+export const getEventCategory = (name = "Meetup") => prisma.eventCategory.findFirstOrThrow({ where: { name } })
+
+export async function createEvent(
+  createdById: string,
+  overrides: Partial<{
+    title: string
+    categoryId: string
+    startAt: Date
+    endAt: Date
+    capacity: number | null
+    requiredTagId: string | null
+    requiredTier: "GREEN" | "ORANGE" | "YELLOW" | "BLUE" | "RED" | null
+    suppressSignupNotifications: boolean
+    canceledAt: Date | null
+  }> = {}
+) {
+  const category = overrides.categoryId ? { id: overrides.categoryId } : await getEventCategory()
+  const startAt = overrides.startAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  return prisma.event.create({
+    data: {
+      title: overrides.title ?? `Test Event ${randomUUID().slice(0, 8)}`,
+      categoryId: category.id,
+      startAt,
+      endAt: overrides.endAt ?? new Date(startAt.getTime() + 2 * 60 * 60 * 1000),
+      capacity: overrides.capacity,
+      createdById,
+      requiredTagId: overrides.requiredTagId,
+      requiredTier: overrides.requiredTier,
+      suppressSignupNotifications: overrides.suppressSignupNotifications ?? false,
+      canceledAt: overrides.canceledAt
+    }
+  })
+}

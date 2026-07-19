@@ -15,7 +15,7 @@ if (!/localhost|127\.0\.0\.1/.test(connectionString)) {
 // per test run via `npm run db:seed` and left alone — resetting per-test would mean every
 // test that needs a FeedType/CareType/etc row has to recreate it, for no isolation benefit
 // since nothing in the app ever mutates these rows through a tracked write path.
-const LOOKUP_TABLES = new Set(["CredentialType", "WorkType", "FeedType", "CareType", "MetricType", "Location", "TierThreshold", "VolunteerTag"])
+const LOOKUP_TABLES = new Set(["CredentialType", "WorkType", "FeedType", "CareType", "MetricType", "Location", "TierThreshold", "VolunteerTag", "EventCategory"])
 
 export { prisma }
 

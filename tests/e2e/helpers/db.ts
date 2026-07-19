@@ -8,7 +8,7 @@ if (!/localhost|127\.0\.0\.1/.test(connectionString)) {
   )
 }
 
-const LOOKUP_TABLES = new Set(["CredentialType", "WorkType", "FeedType", "CareType", "MetricType", "Location", "TierThreshold", "VolunteerTag"])
+const LOOKUP_TABLES = new Set(["CredentialType", "WorkType", "FeedType", "CareType", "MetricType", "Location", "TierThreshold", "VolunteerTag", "EventCategory"])
 // Unlike Vitest's resetDb (tests/vitest/helpers/db.ts), Volunteer is preserved here — the
 // three seeded E2E test volunteers (test-users.ts) are provisioned once in global-setup and
 // reused across the whole run, since re-linking Clerk users every test would be slow and

@@ -121,6 +121,12 @@ enum LocationPeriod {
   NIGHT
 }
 
+enum EventSignupStatus {
+  CONFIRMED
+  WAITLISTED
+  CANCELLED
+}
+
 model Volunteer {
   id                    String                     @id @default(cuid())
   clerkId               String?                    @unique
@@ -147,6 +153,10 @@ model Volunteer {
   blueReleases          Volunteer[]                @relation("BlueRelease")
   accessValidFrom       DateTime?
   accessValidUntil      DateTime?
+  // V2.md Session 4: independent of role — grants event-creation ability to specific people
+  // (e.g. Lori) without making them a full ADMIN. ADMIN can always create events regardless
+  // of this flag (see requireCanScheduleEvents() in src/app/events/actions.ts).
+  canScheduleEvents     Boolean                    @default(false)
   notes                 String?
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
@@ -159,6 +169,9 @@ model Volunteer {
   tagAssignments        VolunteerTagAssignment[]   @relation("VolunteerTagHolder")
   tagsAssigned          VolunteerTagAssignment[]   @relation("VolunteerTagAssignedBy")
   tagsRemoved           VolunteerTagAssignment[]   @relation("VolunteerTagRemovedBy")
+  createdEvents         Event[]                    @relation("EventCreatedBy")
+  eventWatching         EventWatcher[]
+  eventSignups          EventSignup[]
 
   @@index([clerkId])
   @@index([role])
@@ -229,9 +242,9 @@ model TierThreshold {
 // but the schema doesn't assume it's the only one that will ever exist. Admin-managed lookup
 // table, same category as Location/CredentialType/TierThreshold — not ChangeLog-tracked.
 model VolunteerTag {
-  id          String                   @id @default(cuid())
-  name        String                   @unique
-  description String?
+  id                      String                   @id @default(cuid())
+  name                    String                   @unique
+  description             String?
   // Threshold (in days since Volunteer.blueReleasedAt) for this tag's "eligibility
   // candidates" report — e.g. Go Team wants some additional tenure past Blue release, but
   // the exact number isn't settled yet, so it's admin-editable data here rather than a
@@ -239,9 +252,10 @@ model VolunteerTag {
   // eligibility-candidates report configured (most tags won't need one — assignment is
   // always manual regardless).
   minDaysSinceBlueRelease Int?
-  active      Boolean                  @default(true)
-  createdAt   DateTime                 @default(now())
-  assignments VolunteerTagAssignment[]
+  active                  Boolean                  @default(true)
+  createdAt               DateTime                 @default(now())
+  assignments             VolunteerTagAssignment[]
+  gatedEvents             Event[]
 }
 
 // Append-ish (not append-only like AnimalLocationAssignment): assignment is a create,
@@ -628,6 +642,86 @@ model DonationInKind {
   animal          Animal?  @relation(fields: [linkedAnimalId], references: [id])
 
   @@index([linkedAnimalId])
+}
+
+// V2.md Session 4: replaces the manual email-tracking process with self-service signup.
+// Admin-editable lookup, same category as WorkType/FeedType/Location — not ChangeLog-tracked.
+model EventCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  events    Event[]
+}
+
+// Not ChangeLog-tracked: unlike Animal/Volunteer/CheckIn, nothing here carries a legal-
+// defensibility requirement (CONTEXT.md §4) — same reasoning already given for Location and
+// the other admin-managed/scheduling data in this schema.
+// Gating (requiredTagId/requiredTier) is enforced app-side at both listing time (hidden from
+// ineligible volunteers) and signup time (rejected server-side even on a direct action call)
+// — see src/lib/events.ts. When both are set, a volunteer must satisfy both (AND), not either
+// — the spec's only worked example (Blue Handler Class) sets just one, so this is this
+// session's own interpretation, not a confirmed requirement; flagged in HANDOFF.md.
+model Event {
+  id                          String         @id @default(cuid())
+  title                       String
+  description                 String?
+  categoryId                  String
+  startAt                     DateTime
+  endAt                       DateTime
+  locationText                String?
+  capacity                    Int?
+  createdById                 String
+  canceledAt                  DateTime?
+  requiredTagId               String?
+  requiredTier                HandlingColor?
+  suppressSignupNotifications Boolean        @default(false)
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
+  category                    EventCategory  @relation(fields: [categoryId], references: [id])
+  createdBy                   Volunteer      @relation("EventCreatedBy", fields: [createdById], references: [id])
+  requiredTag                 VolunteerTag?  @relation(fields: [requiredTagId], references: [id])
+  watchers                    EventWatcher[]
+  signups                     EventSignup[]
+
+  @@index([categoryId])
+  @@index([startAt])
+  @@index([createdById])
+}
+
+// Additional people who get organizer-level notifications beyond the creator. Set at event
+// creation time only (V2.md's own wording) — no add/remove-watcher action beyond that today.
+model EventWatcher {
+  id          String    @id @default(cuid())
+  eventId     String
+  volunteerId String
+  createdAt   DateTime  @default(now())
+  event       Event     @relation(fields: [eventId], references: [id])
+  volunteer   Volunteer @relation(fields: [volunteerId], references: [id])
+
+  @@unique([eventId, volunteerId])
+  @@index([eventId])
+}
+
+// One row per volunteer per event — re-signing up after a cancellation flips the same row's
+// status back rather than inserting a duplicate, so capacity/waitlist counts never have to
+// dedupe across historical rows. signedUpAt is refreshed on re-signup so waitlist promotion
+// order (earliest signedUpAt first, src/app/events/[id]/signup-actions.ts) reflects the
+// current queue position, not a stale original attempt.
+model EventSignup {
+  id          String            @id @default(cuid())
+  eventId     String
+  volunteerId String
+  status      EventSignupStatus @default(CONFIRMED)
+  signedUpAt  DateTime          @default(now())
+  canceledAt  DateTime?
+  event       Event             @relation(fields: [eventId], references: [id])
+  volunteer   Volunteer         @relation(fields: [volunteerId], references: [id])
+
+  @@unique([eventId, volunteerId])
+  @@index([eventId])
+  @@index([volunteerId])
+  @@index([status])
 }
 
 model ChatChannel {

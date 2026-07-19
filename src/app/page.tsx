@@ -36,6 +36,9 @@ export default function Home() {
           <Link href="/tags" className="text-sm underline">
             Tags
           </Link>
+          <Link href="/events" className="text-sm underline">
+            Events
+          </Link>
           <Link href="/admin" className="text-sm underline">
             Admin check
           </Link>

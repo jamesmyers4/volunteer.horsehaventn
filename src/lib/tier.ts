@@ -5,7 +5,7 @@
 
 export type ProgressionTier = "GREEN" | "ORANGE" | "YELLOW" | "BLUE"
 
-const TIER_ORDER: ProgressionTier[] = ["GREEN", "ORANGE", "YELLOW", "BLUE"]
+export const TIER_ORDER: ProgressionTier[] = ["GREEN", "ORANGE", "YELLOW", "BLUE"]
 
 export type TierThresholdRow = {
   // Widened to `string` rather than ProgressionTier: TierThreshold.tier is typed as the
@@ -54,4 +54,14 @@ export function computeTiers(
   const actualTier: ProgressionTier = blueTenureMet && volunteer.blueReleasedAt ? "BLUE" : computedEligibleTier
 
   return { tenureDays: days, computedEligibleTier, actualTier, blueTenureMet }
+}
+
+/**
+ * Whether `actual` meets or exceeds `required` in Green->Orange->Yellow->Blue order.
+ * Used by V2.md Session 4's event tier-gating (src/lib/events.ts) — a required tier is a
+ * floor a volunteer must clear, not an exact match, so a Blue volunteer still qualifies for
+ * a Yellow-gated event.
+ */
+export function tierAtLeast(actual: ProgressionTier, required: ProgressionTier): boolean {
+  return TIER_ORDER.indexOf(actual) >= TIER_ORDER.indexOf(required)
 }
