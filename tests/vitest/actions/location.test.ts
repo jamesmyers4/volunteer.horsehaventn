@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { describe, it, expect } from "vitest"
-import { createLocation } from "@/app/locations/actions"
+import { createLocation, updateLocation } from "@/app/locations/actions"
 import { createLocationAssignment } from "@/app/animals/[id]/location-actions"
 import { getLocationHistory, getCurrentLocationAssignments, currentFromHistory } from "@/lib/locations"
 import { prisma } from "@/lib/prisma"
@@ -39,6 +39,18 @@ describe("createLocation", () => {
     expect(location.type).toBe("FIELD")
     expect(location.barnNumber).toBeNull()
     expect(location.stallNumber).toBeNull()
+  })
+
+  // V2.md Session 7: the Admin Console's Locations screen reuses this action and needs to
+  // land back on /admin/locations instead of the plain /locations list.
+  it("redirects to a caller-provided redirectTo instead of /locations when set", async () => {
+    const code = `T${unique()}`
+    await createVolunteer({ clerkId: "clerk_admin_loc6", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_loc6")
+
+    const url = await captureRedirect(() => createLocation(formData({ type: "FIELD", name: code, fieldCode: code, redirectTo: "/admin/locations" })))
+
+    expect(url).toBe("/admin/locations")
   })
 
   it("rejects a FIELD location that carries a barn/stall number", async () => {
@@ -84,6 +96,69 @@ describe("createLocation", () => {
     await expect(createLocation(formData({ type: "SICK_BAY", name, stallNumber: "1" }))).rejects.toThrow(
       "A SICK_BAY location cannot have a barn/stall number"
     )
+  })
+})
+
+// V2.md Session 7: full CRUD for Location (edit/deactivate an existing row) was explicitly
+// deferred to the Admin Console — only create existed until now.
+describe("updateLocation", () => {
+  it("is Admin-only — a Shift Lead is rejected and nothing changes", async () => {
+    const location = await getLocation("L1")
+    await createVolunteer({ clerkId: "clerk_lead_ul", role: "SHIFT_LEAD" })
+    mockSignedInAs("clerk_lead_ul")
+
+    await expect(updateLocation(location.id, formData({ name: "Changed", isActive: "on" }))).rejects.toThrow("Not authorized")
+    const unchanged = await prisma.location.findUniqueOrThrow({ where: { id: location.id } })
+    expect(unchanged.name).toBe(location.name)
+  })
+
+  it("lets an Admin edit a FIELD's name, field code, and turnout/bring-in order", async () => {
+    const code = `T${unique()}`
+    const location = await prisma.location.create({ data: { type: "FIELD", name: `Test Field ${unique()}`, fieldCode: code } })
+    await createVolunteer({ clerkId: "clerk_admin_ul1", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_ul1")
+
+    const url = await captureRedirect(() =>
+      updateLocation(location.id, formData({ name: "Renamed Field", fieldCode: code, turnoutOrder: "3", bringInOrder: "9", isActive: "on" }))
+    )
+
+    expect(url).toBe("/admin/locations")
+    const updated = await prisma.location.findUniqueOrThrow({ where: { id: location.id } })
+    expect(updated.name).toBe("Renamed Field")
+    expect(updated.turnoutOrder).toBe(3)
+    expect(updated.bringInOrder).toBe(9)
+  })
+
+  it("deactivates a location by unsetting isActive (leaving the checkbox off in the submitted form)", async () => {
+    const location = await prisma.location.create({ data: { type: "SICK_BAY", name: `Test Sick Bay ${unique()}` } })
+    await createVolunteer({ clerkId: "clerk_admin_ul2", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_ul2")
+
+    await captureRedirect(() => updateLocation(location.id, formData({ name: location.name })))
+
+    const updated = await prisma.location.findUniqueOrThrow({ where: { id: location.id } })
+    expect(updated.isActive).toBe(false)
+  })
+
+  it("rejects adding a barn/stall number to an existing FIELD location", async () => {
+    const location = await prisma.location.create({ data: { type: "FIELD", name: `Test Field ${unique()}` } })
+    await createVolunteer({ clerkId: "clerk_admin_ul3", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_ul3")
+
+    await expect(updateLocation(location.id, formData({ name: location.name, stallNumber: "5" }))).rejects.toThrow(
+      "A FIELD location cannot have a barn/stall number"
+    )
+  })
+
+  it("type itself is not editable — updateLocation has no formData field for it", async () => {
+    const location = await prisma.location.create({ data: { type: "ARENA", name: `Test Arena ${unique()}` } })
+    await createVolunteer({ clerkId: "clerk_admin_ul4", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_ul4")
+
+    await captureRedirect(() => updateLocation(location.id, formData({ name: "Renamed Arena" })))
+
+    const updated = await prisma.location.findUniqueOrThrow({ where: { id: location.id } })
+    expect(updated.type).toBe("ARENA")
   })
 })
 

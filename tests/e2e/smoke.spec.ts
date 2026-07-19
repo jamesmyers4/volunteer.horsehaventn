@@ -14,10 +14,12 @@ test("signed-in volunteer sees the main nav", async ({ volunteerPage }) => {
   await expect(volunteerPage.getByRole("link", { name: "Locations" })).toBeVisible()
 })
 
-test("admin check page confirms role for an Admin and rejects a Volunteer", async ({ adminPage, openAs }) => {
+// V2.md Session 7 replaced the diagnostic "am I admin" scaffold with the real Admin Console
+// home (see tests/e2e/admin.spec.ts for full route-protection and CRUD coverage) — this smoke
+// test only checks the basic admin-vs-non-admin split still holds for the top-level route.
+test("admin console home confirms access for an Admin and rejects a Volunteer", async ({ adminPage, openAs }) => {
   await adminPage.goto("/admin")
-  await expect(adminPage.getByText("Admin access confirmed")).toBeVisible()
-  await expect(adminPage.getByText(/ADMIN/)).toBeVisible()
+  await expect(adminPage.getByRole("heading", { name: "Admin Console" })).toBeVisible()
 
   // adminPage and volunteerPage would otherwise fight over the same underlying `page`
   // fixture (Playwright caches it once per test) — the second signIn() call would fail

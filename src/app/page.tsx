@@ -52,7 +52,7 @@ export default function Home() {
             Kiosk
           </Link>
           <Link href="/admin" className="text-sm underline">
-            Admin check
+            Admin Console
           </Link>
         </div>
       </Show>
