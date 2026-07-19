@@ -36,4 +36,8 @@ Next.js (App Router) + TypeScript, Tailwind CSS, Postgres (Neon) + Prisma, Clerk
 
 ## Status
 
-Phase 1 scaffold — schema, auth wiring, and ChangeLog mechanism are in place. No feature UI yet. See `CONTEXT.md` §15 for the Phase 1/Phase 2 split.
+Phase 1 scaffold - schema and auth wiring complete (volunteer accounts, horse tracking, feed logs, sign in/sign out ) - Change Log mechanism in place. No Feature UI yet. See `CONTEXT.md for Phase 1/ Phase 2 split.
+
+Phase 2 test automation stuie - complete (playwright e2e tests for ui, vitest api and db tests)
+
+Version 2 edits (in progress): Session 1 complete, Session 2 WIP
