@@ -92,4 +92,50 @@ describe("submitCheckIn", () => {
     expect(entries.length).toBeGreaterThan(0)
     expect(entries.every((e) => e.action === "CREATE")).toBe(true)
   })
+
+  // V2.md Session 2: the tier progression tenure clock starts at the first recorded
+  // shift/check-in, not account creation.
+  it("sets firstShiftDate from the first check-in's own date, not account creation", async () => {
+    const volunteer = await createVolunteer({ clerkId: "clerk_checkin_fsd1" })
+    expect(volunteer.firstShiftDate).toBeNull()
+    mockSignedInAs("clerk_checkin_fsd1")
+    const workType = await getWorkType()
+
+    await captureRedirect(() =>
+      submitCheckIn(formData({ date: "2026-06-01", shiftType: "AM", workTypeId: workType.id, checkInTime: "08:00", checkOutTime: "12:00" }))
+    )
+
+    const updated = await prisma.volunteer.findUniqueOrThrow({ where: { id: volunteer.id } })
+    expect(updated.firstShiftDate?.toISOString()).toContain("2026-06-01")
+  })
+
+  it("never overwrites firstShiftDate on a later check-in", async () => {
+    const volunteer = await createVolunteer({ clerkId: "clerk_checkin_fsd2" })
+    mockSignedInAs("clerk_checkin_fsd2")
+    const workType = await getWorkType()
+
+    await captureRedirect(() =>
+      submitCheckIn(formData({ date: "2026-06-01", shiftType: "AM", workTypeId: workType.id, checkInTime: "08:00", checkOutTime: "12:00" }))
+    )
+    await captureRedirect(() =>
+      submitCheckIn(formData({ date: "2026-07-15", shiftType: "PM", workTypeId: workType.id, checkInTime: "13:00", checkOutTime: "17:00" }))
+    )
+
+    const updated = await prisma.volunteer.findUniqueOrThrow({ where: { id: volunteer.id } })
+    expect(updated.firstShiftDate?.toISOString()).toContain("2026-06-01")
+  })
+
+  it("leaves firstShiftDate untouched if it was already set (e.g. by an admin backfill)", async () => {
+    const volunteer = await createVolunteer({ clerkId: "clerk_checkin_fsd3" })
+    await prisma.volunteer.update({ where: { id: volunteer.id }, data: { firstShiftDate: new Date("2025-01-01") } })
+    mockSignedInAs("clerk_checkin_fsd3")
+    const workType = await getWorkType()
+
+    await captureRedirect(() =>
+      submitCheckIn(formData({ date: "2026-06-01", shiftType: "AM", workTypeId: workType.id, checkInTime: "08:00", checkOutTime: "12:00" }))
+    )
+
+    const updated = await prisma.volunteer.findUniqueOrThrow({ where: { id: volunteer.id } })
+    expect(updated.firstShiftDate?.toISOString()).toContain("2025-01-01")
+  })
 })

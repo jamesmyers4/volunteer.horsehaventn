@@ -9,13 +9,45 @@ const adapter = new PrismaPg({ connectionString })
 const prisma = new PrismaClient({ adapter })
 
 async function main() {
-  await prisma.credentialType.createMany({
+  // name is now @unique (V2.md Session 2 migration), so this is a real upsert — unlike
+  // createMany+skipDuplicates, which turned out to silently duplicate every row on repeat
+  // seed runs since there was previously no unique constraint for it to dedupe against.
+  const credentialTypes = [
+    { name: "Rabies Vaccination" },
+    // The one real annual compliance requirement today (V2.md Session 2) — renewalPeriodDays
+    // drives auto-computed CredentialRecord.expiresAt and the missing/expired training query.
+    { name: "Volunteer Manual Acknowledgment", isRequired: true, renewalPeriodDays: 365 },
+    { name: "Blue Handler Class" }
+  ]
+  for (const credentialType of credentialTypes) {
+    await prisma.credentialType.upsert({
+      where: { name: credentialType.name },
+      update: { isRequired: credentialType.isRequired ?? false, renewalPeriodDays: credentialType.renewalPeriodDays ?? null },
+      create: credentialType
+    })
+  }
+
+  // Green->Orange->Yellow->Blue tenure thresholds (V2.md Session 2). Approximate per
+  // CONTEXT.md §16 pending the real written schedule from Horse Haven — admin-editable via
+  // /tiers, not hardcoded, so these seed values are a starting point, not a commitment.
+  await prisma.tierThreshold.createMany({
     data: [
-      { name: "Rabies Vaccination" },
-      { name: "Volunteer Manual Acknowledgment" },
-      { name: "Blue Handler Class" }
+      { tier: "GREEN", minDaysTenure: 0, requiresManualRelease: false },
+      { tier: "ORANGE", minDaysTenure: 180, requiresManualRelease: false },
+      { tier: "YELLOW", minDaysTenure: 365, requiresManualRelease: false },
+      { tier: "BLUE", minDaysTenure: 730, requiresManualRelease: true }
     ],
     skipDuplicates: true
+  })
+
+  // V2.md Session 3: generic volunteer tagging, Go Team is the first real tag. The
+  // eligibility-report threshold (minDaysSinceBlueRelease) is a starting guess, same category
+  // as the RP1-RP6 turnout order below — admin-editable via /tags, not a commitment, pending
+  // the real Go Team tenure requirement from Lori/Ashley.
+  await prisma.volunteerTag.upsert({
+    where: { name: "Go Team" },
+    update: {},
+    create: { name: "Go Team", description: "Off-site outreach/tabling team.", minDaysSinceBlueRelease: 180 }
   })
 
   await prisma.feedType.createMany({

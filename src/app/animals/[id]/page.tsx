@@ -7,6 +7,7 @@ import { createMedicationRegimen, endMedicationRegimen, logMedicationAdministere
 import { createCareEntry, createHealthIssue, resolveHealthIssue } from "./care-actions"
 import { createWeightEntry, createAnimalMetric } from "./metrics-actions"
 import { createLocationAssignment } from "./location-actions"
+import { getLocationHistory, currentFromHistory } from "@/lib/locations"
 
 export default async function AnimalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const volunteer = await requireVolunteer()
@@ -67,13 +68,8 @@ export default async function AnimalDetailPage({ params }: { params: Promise<{ i
   // Append-only (V2.md Session 1): "current" per period is derived as the latest
   // effectiveAt row, not a stored pointer — full history stays queryable but is only
   // surfaced behind the "View history" expand below, not shown by default.
-  const locationAssignments = await prisma.animalLocationAssignment.findMany({
-    where: { animalId: id },
-    include: { location: true },
-    orderBy: { effectiveAt: "desc" }
-  })
-  const currentDayAssignment = locationAssignments.find((a) => a.period === "DAY")
-  const currentNightAssignment = locationAssignments.find((a) => a.period === "NIGHT")
+  const locationAssignments = await getLocationHistory(id)
+  const { day: currentDayAssignment, night: currentNightAssignment } = currentFromHistory(locationAssignments)
 
   const locations = await prisma.location.findMany({
     where: { isActive: true },

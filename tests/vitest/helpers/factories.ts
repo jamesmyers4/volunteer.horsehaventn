@@ -42,3 +42,6 @@ export const getWorkType = (name = "Regular Shift") => prisma.workType.findFirst
 export const getCareType = (name = "Wound Check") => prisma.careType.findFirstOrThrow({ where: { name } })
 export const getMetricType = (name = "Height") => prisma.metricType.findFirstOrThrow({ where: { name } })
 export const getLocation = (fieldCode = "L1") => prisma.location.findFirstOrThrow({ where: { fieldCode } })
+export const getTierThreshold = (tier: "GREEN" | "ORANGE" | "YELLOW" | "BLUE" = "BLUE") => prisma.tierThreshold.findFirstOrThrow({ where: { tier } })
+export const getCredentialType = (name = "Volunteer Manual Acknowledgment") => prisma.credentialType.findFirstOrThrow({ where: { name } })
+export const getVolunteerTag = (name = "Go Team") => prisma.volunteerTag.findFirstOrThrow({ where: { name } })

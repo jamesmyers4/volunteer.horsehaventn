@@ -36,5 +36,15 @@ export async function submitCheckIn(formData: FormData) {
     }
   })
 
+  // V2.md Session 2: the tier progression tenure clock starts at the first recorded
+  // shift/check-in, not account creation. Set exactly once — this check-in's own date, not
+  // "now" — and never touched again after that (a second check-in leaves it alone).
+  if (!volunteer.firstShiftDate) {
+    await withChangeLog(prisma, volunteer.id, "First shift date set from first check-in").volunteer.update({
+      where: { id: volunteer.id },
+      data: { firstShiftDate: checkInAt }
+    })
+  }
+
   redirect("/checkin?success=1")
 }

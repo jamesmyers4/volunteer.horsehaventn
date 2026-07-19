@@ -11,7 +11,7 @@ test("signed-in volunteer sees the main nav", async ({ volunteerPage }) => {
   await expect(volunteerPage.getByRole("link", { name: "Dashboard" })).toBeVisible()
   await expect(volunteerPage.getByRole("link", { name: "Check in" })).toBeVisible()
   await expect(volunteerPage.getByRole("link", { name: "Horses" })).toBeVisible()
-  await expect(volunteerPage.getByRole("link", { name: "Fields" })).toBeVisible()
+  await expect(volunteerPage.getByRole("link", { name: "Locations" })).toBeVisible()
 })
 
 test("admin check page confirms role for an Admin and rejects a Volunteer", async ({ adminPage, openAs }) => {

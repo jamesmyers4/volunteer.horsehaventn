@@ -122,41 +122,71 @@ enum LocationPeriod {
 }
 
 model Volunteer {
-  id                    String                   @id @default(cuid())
-  clerkId               String?                  @unique
+  id                    String                     @id @default(cuid())
+  clerkId               String?                    @unique
   name                  String
   email                 String?
   phone                 String?
   emergencyContactName  String?
   emergencyContactPhone String?
-  role                  Role                     @default(VOLUNTEER)
-  status                VolunteerStatus          @default(ACTIVE)
-  tier                  HandlingColor            @default(GREEN)
+  role                  Role                       @default(VOLUNTEER)
+  status                VolunteerStatus            @default(ACTIVE)
+  tier                  HandlingColor              @default(GREEN)
   tierUpdatedAt         DateTime?
   hireDate              DateTime?
+  // V2.md Session 2: the tenure clock for the Green->Orange->Yellow->Blue progression.
+  // Deliberately set from the first real CheckIn, not account creation — see
+  // checkin/actions.ts. Null until then; computeTiers() (src/lib/tier.ts) treats a null
+  // firstShiftDate as zero tenure rather than erroring.
+  firstShiftDate        DateTime?
+  // Manual human gate for Blue, independent of tenure (CONTEXT.md §6: tenure alone never
+  // grants Blue). Set only via releaseBlue() (src/app/volunteers/tier-actions.ts).
+  blueReleasedAt        DateTime?
+  blueReleasedById      String?
+  blueReleasedBy        Volunteer?                 @relation("BlueRelease", fields: [blueReleasedById], references: [id])
+  blueReleases          Volunteer[]                @relation("BlueRelease")
   accessValidFrom       DateTime?
   accessValidUntil      DateTime?
   notes                 String?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
   credentials           CredentialRecord[]
   regularShifts         RegularShiftAssignment[]
-  checkIns              CheckIn[]                @relation("VolunteerCheckIns")
-  loggedCheckIns        CheckIn[]                @relation("LoggedByVolunteer")
+  checkIns              CheckIn[]                  @relation("VolunteerCheckIns")
+  loggedCheckIns        CheckIn[]                  @relation("LoggedByVolunteer")
   sentMessages          ChatMessage[]
   recordedLocationMoves AnimalLocationAssignment[]
+  tagAssignments        VolunteerTagAssignment[]   @relation("VolunteerTagHolder")
+  tagsAssigned          VolunteerTagAssignment[]   @relation("VolunteerTagAssignedBy")
+  tagsRemoved           VolunteerTagAssignment[]   @relation("VolunteerTagRemovedBy")
 
   @@index([clerkId])
   @@index([role])
   @@index([status])
 }
 
+// Covers both vaccinations and compliance/training acknowledgments under one mechanism
+// (CONTEXT.md §7). V2.md Session 2's "compliance training" ask (a requirement definition +
+// per-volunteer completions with expiration) is exactly this existing shape — extended here
+// with the fields that ask needed, rather than a duplicate TrainingRequirement table.
 model CredentialType {
-  id        String             @id @default(cuid())
-  name      String
-  active    Boolean            @default(true)
-  createdAt DateTime           @default(now())
-  records   CredentialRecord[]
+  id                String             @id @default(cuid())
+  // Made unique in the V2.md Session 2 migration — discovered while adding upsert-based
+  // seeding that this table had no unique constraint at all, so re-running `db:seed` was
+  // silently duplicating every row indefinitely. FeedType/CareType/WorkType/MetricType have
+  // the same latent gap; out of scope here (nothing in Session 2 touches them), flagged in
+  // HANDOFF.md as a follow-up.
+  name              String             @unique
+  active            Boolean            @default(true)
+  // Below: added for V2.md Session 2. isRequired/renewalPeriodDays drive the "expired or
+  // missing required training" query; renewalPeriodDays null means one-time, never expires
+  // (matches CONTEXT.md's rabies-vaccination-collected-for-legal-reasons-only case).
+  isRequired        Boolean            @default(false)
+  renewalPeriodDays Int?
+  appliesToTier     HandlingColor?
+  fileUrl           String?
+  createdAt         DateTime           @default(now())
+  records           CredentialRecord[]
 }
 
 model CredentialRecord {
@@ -177,6 +207,65 @@ model CredentialRecord {
   @@index([volunteerId])
   @@index([credentialTypeId])
   @@index([expiresAt])
+}
+
+// Formalizes the Green->Orange->Yellow->Blue progression (V2.md Session 2). Admin-editable
+// data, not hardcoded constants, since exact thresholds are still approximate pending the
+// real written schedule (CONTEXT.md §16). Tier is never cached on Volunteer — always computed
+// at query time from firstShiftDate + this table (src/lib/tier.ts), per V2.md's explicit
+// "don't store a cached current tier that can drift" instruction.
+model TierThreshold {
+  id                    String        @id @default(cuid())
+  tier                  HandlingColor @unique
+  minDaysTenure         Int
+  requiresManualRelease Boolean       @default(false)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([tier])
+}
+
+// Generic, extensible volunteer tagging (V2.md Session 3) — Go Team is the first real tag,
+// but the schema doesn't assume it's the only one that will ever exist. Admin-managed lookup
+// table, same category as Location/CredentialType/TierThreshold — not ChangeLog-tracked.
+model VolunteerTag {
+  id          String                   @id @default(cuid())
+  name        String                   @unique
+  description String?
+  // Threshold (in days since Volunteer.blueReleasedAt) for this tag's "eligibility
+  // candidates" report — e.g. Go Team wants some additional tenure past Blue release, but
+  // the exact number isn't settled yet, so it's admin-editable data here rather than a
+  // hardcoded constant (V2.md's explicit instruction). Null means this tag has no
+  // eligibility-candidates report configured (most tags won't need one — assignment is
+  // always manual regardless).
+  minDaysSinceBlueRelease Int?
+  active      Boolean                  @default(true)
+  createdAt   DateTime                 @default(now())
+  assignments VolunteerTagAssignment[]
+}
+
+// Append-ish (not append-only like AnimalLocationAssignment): assignment is a create,
+// removal is an update setting removedAt/removedById rather than a delete — matches this
+// project's general preference for closing a row over hard-deleting it (RegularShiftAssignment,
+// MedicationRegimen), even though CLAUDE.md's explicit no-hard-delete list doesn't literally
+// name this table. ChangeLog-tracked (unlike AnimalLocationAssignment) because, unlike that
+// model, this one actually gets updated after creation — the removal itself is exactly the
+// kind of field-level diff ChangeLog exists to capture.
+model VolunteerTagAssignment {
+  id           String       @id @default(cuid())
+  volunteerId  String
+  tagId        String
+  assignedById String
+  assignedAt   DateTime     @default(now())
+  removedAt    DateTime?
+  removedById  String?
+  volunteer    Volunteer    @relation("VolunteerTagHolder", fields: [volunteerId], references: [id])
+  tag          VolunteerTag @relation(fields: [tagId], references: [id])
+  assignedBy   Volunteer    @relation("VolunteerTagAssignedBy", fields: [assignedById], references: [id])
+  removedBy    Volunteer?   @relation("VolunteerTagRemovedBy", fields: [removedById], references: [id])
+
+  @@index([volunteerId])
+  @@index([tagId])
 }
 
 model RegularShiftAssignment {
@@ -236,20 +325,20 @@ model CheckIn {
 }
 
 model Animal {
-  id                     String                  @id @default(cuid())
+  id                     String                     @id @default(cuid())
   name                   String
-  species                AnimalSpecies           @default(HORSE)
+  species                AnimalSpecies              @default(HORSE)
   intakeDate             DateTime?
-  status                 AnimalStatus            @default(ACTIVE)
-  sex                    AnimalSex               @default(UNKNOWN)
-  spayed                 Boolean                 @default(false)
-  legalCase              Boolean                 @default(false)
+  status                 AnimalStatus               @default(ACTIVE)
+  sex                    AnimalSex                  @default(UNKNOWN)
+  spayed                 Boolean                    @default(false)
+  legalCase              Boolean                    @default(false)
   caseReference          String?
-  requiredHandlerColor   HandlingColor           @default(GREEN)
+  requiredHandlerColor   HandlingColor              @default(GREEN)
   handlingNotes          String?
   notes                  String?
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
   photos                 AnimalPhoto[]
   placements             Placement[]
   feedingBaselines       FeedingBaseline[]

@@ -24,6 +24,18 @@ export default function Home() {
           <Link href="/locations" className="text-sm underline">
             Locations
           </Link>
+          <Link href="/volunteers" className="text-sm underline">
+            Volunteers
+          </Link>
+          <Link href="/training" className="text-sm underline">
+            Training
+          </Link>
+          <Link href="/tiers" className="text-sm underline">
+            Tiers
+          </Link>
+          <Link href="/tags" className="text-sm underline">
+            Tags
+          </Link>
           <Link href="/admin" className="text-sm underline">
             Admin check
           </Link>

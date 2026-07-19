@@ -1,13 +1,16 @@
 import { test, expect } from "./fixtures"
 import { prisma } from "./helpers/db"
 
-test("the daily dashboard shows feeding, medication, health, and pasture at a glance for an active horse", async ({ volunteerPage }) => {
+test("the daily dashboard shows feeding, medication, health, and location at a glance for an active horse", async ({ volunteerPage }) => {
   const animal = await prisma.animal.create({ data: { name: "Juno", status: "ACTIVE" } })
   const feedType = await prisma.feedType.findFirstOrThrow({ where: { name: "Senior" } })
   await prisma.feedingBaseline.create({ data: { animalId: animal.id, feedTypeId: feedType.id, shift: "AM", amount: "1" } })
   await prisma.healthIssue.create({ data: { animalId: animal.id, description: "Mild nasal discharge", startDate: new Date("2026-07-15") } })
-  const field = await prisma.field.findFirstOrThrow({ where: { code: "L6" } })
-  await prisma.pastureAssignment.create({ data: { animalId: animal.id, fieldId: field.id, startDate: new Date("2026-07-01") } })
+  const location = await prisma.location.findFirstOrThrow({ where: { fieldCode: "L6" } })
+  const admin = await prisma.volunteer.findFirstOrThrow({ where: { role: "ADMIN" } })
+  await prisma.animalLocationAssignment.create({
+    data: { animalId: animal.id, locationId: location.id, period: "DAY", effectiveAt: new Date("2026-07-01"), recordedById: admin.id }
+  })
 
   await volunteerPage.goto("/dashboard")
 
