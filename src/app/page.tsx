@@ -24,6 +24,9 @@ export default function Home() {
           <Link href="/locations" className="text-sm underline">
             Locations
           </Link>
+          <Link href="/intake-groups" className="text-sm underline">
+            Intake Groups
+          </Link>
           <Link href="/feed-board" className="text-sm underline">
             Feed Board
           </Link>

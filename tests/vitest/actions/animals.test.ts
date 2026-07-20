@@ -79,6 +79,14 @@ describe("createAnimal", () => {
     const animal = await prisma.animal.findFirstOrThrow({ where: { name: "Winter" } })
     expect(animal.herdOrder).toBe(2)
   })
+
+  it("rejects creating an animal with status ADOPTED directly — use createPlacement instead", async () => {
+    await createVolunteer({ clerkId: "clerk_admin_h4", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_h4")
+
+    await expect(createAnimalAction(formData({ ...baseFields, status: "ADOPTED" }))).rejects.toThrow("Record Placement")
+    expect(await prisma.animal.count()).toBe(0)
+  })
 })
 
 describe("updateAnimal", () => {
@@ -99,18 +107,60 @@ describe("updateAnimal", () => {
     mockSignedInAs("clerk_admin_u")
 
     const url = await captureRedirect(() =>
-      updateAnimal(animal.id, formData({ ...baseFields, name: "Renamed", status: "ADOPTED" }))
+      updateAnimal(animal.id, formData({ ...baseFields, name: "Renamed", status: "RETURNED" }))
     )
 
     expect(url).toBe(`/animals/${animal.id}`)
     const updated = await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })
     expect(updated.name).toBe("Renamed")
-    expect(updated.status).toBe("ADOPTED")
+    expect(updated.status).toBe("RETURNED")
 
     const nameChange = await prisma.changeLog.findFirst({
       where: { entityType: "Animal", entityId: animal.id, field: "name", action: "UPDATE" }
     })
     expect(nameChange).toMatchObject({ oldValue: "Original", newValue: "Renamed" })
+  })
+
+  // V3.md Session 1: "moving Animal.status to ADOPTED should coincide with a Placement row
+  // being created/finalized" — updateAnimal had no such enforcement before this session (it
+  // just set the field directly, see the pre-Session-1 version of this same test above).
+  // createPlacement (src/app/animals/[id]/placement-actions.ts) is now the only path that can
+  // set ADOPTED.
+  it("rejects a direct ACTIVE -> ADOPTED transition, directing the caller to Record Placement instead", async () => {
+    const animal = await createAnimal({ name: "NoBypass", status: "ACTIVE" })
+    await createVolunteer({ clerkId: "clerk_admin_u3", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_u3")
+
+    await expect(updateAnimal(animal.id, formData({ ...baseFields, name: "NoBypass", status: "ADOPTED" }))).rejects.toThrow(
+      "Record Placement"
+    )
+
+    const unchanged = await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })
+    expect(unchanged.status).toBe("ACTIVE")
+  })
+
+  it("allows editing other fields on an already-ADOPTED animal without re-triggering the placement check", async () => {
+    const animal = await createAnimal({ name: "AlreadyPlaced", status: "ADOPTED" })
+    await createVolunteer({ clerkId: "clerk_admin_u4", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_u4")
+
+    await captureRedirect(() => updateAnimal(animal.id, formData({ ...baseFields, name: "AlreadyPlacedRenamed", status: "ADOPTED" })))
+
+    const updated = await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })
+    expect(updated.name).toBe("AlreadyPlacedRenamed")
+    expect(updated.status).toBe("ADOPTED")
+  })
+
+  it("accepts FOSTER and PENDING_ADOPTION as ordinary status transitions", async () => {
+    const animal = await createAnimal({ name: "Fosterling", status: "ACTIVE" })
+    await createVolunteer({ clerkId: "clerk_admin_u5", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_u5")
+
+    await captureRedirect(() => updateAnimal(animal.id, formData({ ...baseFields, name: "Fosterling", status: "FOSTER" })))
+    expect((await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })).status).toBe("FOSTER")
+
+    await captureRedirect(() => updateAnimal(animal.id, formData({ ...baseFields, name: "Fosterling", status: "PENDING_ADOPTION" })))
+    expect((await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })).status).toBe("PENDING_ADOPTION")
   })
 
   it("updates herdOrder and logs the change", async () => {

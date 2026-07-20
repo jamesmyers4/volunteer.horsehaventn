@@ -25,12 +25,29 @@ export async function createVolunteer(
 }
 
 export async function createAnimal(
-  overrides: Partial<{ name: string; status: "ACTIVE" | "ADOPTED" | "RETURNED" | "DECEASED" | "TRANSFERRED" }> = {}
+  overrides: Partial<{
+    name: string
+    status: "ACTIVE" | "ADOPTED" | "RETURNED" | "DECEASED" | "TRANSFERRED" | "FOSTER" | "PENDING_ADOPTION"
+    intakeDate: Date
+    intakeGroupId: string
+  }> = {}
 ) {
   return prisma.animal.create({
     data: {
       name: overrides.name ?? `Test Horse ${randomUUID().slice(0, 8)}`,
-      status: overrides.status ?? "ACTIVE"
+      status: overrides.status ?? "ACTIVE",
+      intakeDate: overrides.intakeDate,
+      intakeGroupId: overrides.intakeGroupId
+    }
+  })
+}
+
+export async function createIntakeGroup(overrides: Partial<{ label: string; intakeDate: Date; isActive: boolean }> = {}) {
+  return prisma.intakeGroup.create({
+    data: {
+      label: overrides.label ?? `Test Group ${randomUUID().slice(0, 8)}`,
+      intakeDate: overrides.intakeDate ?? new Date("2026-01-01"),
+      isActive: overrides.isActive ?? true
     }
   })
 }

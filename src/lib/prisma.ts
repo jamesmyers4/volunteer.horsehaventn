@@ -24,7 +24,8 @@ const trackedModels = [
   "CredentialRecord",
   "CheckIn",
   "VolunteerTagAssignment",
-  "Shift"
+  "Shift",
+  "AnimalRelationship"
 ] as const
 
 type TrackedModel = (typeof trackedModels)[number]

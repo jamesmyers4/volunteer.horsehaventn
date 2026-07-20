@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma"
 
 const statusColors: Record<string, string> = {
   ACTIVE: "bg-green-100 text-green-800",
+  FOSTER: "bg-teal-100 text-teal-800",
+  PENDING_ADOPTION: "bg-indigo-100 text-indigo-800",
   ADOPTED: "bg-blue-100 text-blue-800",
   RETURNED: "bg-yellow-100 text-yellow-800",
   DECEASED: "bg-gray-200 text-gray-700",

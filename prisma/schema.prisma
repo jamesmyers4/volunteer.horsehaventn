@@ -48,6 +48,21 @@ enum AnimalStatus {
   RETURNED
   DECEASED
   TRANSFERRED
+  FOSTER
+  PENDING_ADOPTION
+}
+
+// V3.md Session 1: SIRE_OF/DAM_OF/SIBLING_OF cover the confirmed real bloodline case
+// (Guinness sired Rowan and Shannon); OTHER is the catch-all for anything that doesn't fit
+// those three (half-sibling, dam/sire once removed, etc.) rather than growing the enum for
+// every rare case — matches CONTEXT.md §3's "hard enums only for a small fixed real-world
+// set" guidance, with OTHER as the escape hatch instead of a lookup table (this relationship
+// type genuinely is fixed, unlike FeedType/CareType which staff add to over time).
+enum RelationType {
+  SIRE_OF
+  DAM_OF
+  SIBLING_OF
+  OTHER
 }
 
 enum AnimalSex {
@@ -181,6 +196,7 @@ model Volunteer {
   createdEvents         Event[]                    @relation("EventCreatedBy")
   eventWatching         EventWatcher[]
   eventSignups          EventSignup[]
+  recordedRelationships AnimalRelationship[]
 
   @@index([clerkId])
   @@index([role])
@@ -405,6 +421,11 @@ model Animal {
   requiredHandlerColor   HandlingColor              @default(GREEN)
   handlingNotes          String?
   notes                  String?
+  // V3.md Session 1: most animals arrive alone, so this stays nullable/optional rather than
+  // required — set via the dedicated assignIntakeGroup action (Admin-or-Shift-Lead, same
+  // "assignment" permission split as AnimalLocationAssignment), not the Admin-only
+  // updateAnimal core-fields path, even though it lives directly on Animal.
+  intakeGroupId          String?
   // V2.md Session 6: manual, admin-editable herd-hierarchy rank for the Turnout Board's
   // per-field ordering ("lead animal at top"). Nullable — most animals won't have a
   // documented rank, and null always sorts after any set value (see turnout-board/page.tsx),
@@ -426,9 +447,53 @@ model Animal {
   weightEntries          WeightEntry[]
   locationAssignments    AnimalLocationAssignment[]
   donations              DonationInKind[]
+  intakeGroup            IntakeGroup?               @relation(fields: [intakeGroupId], references: [id])
+  relationshipsFrom      AnimalRelationship[]       @relation("AnimalRelationshipFrom")
+  relationshipsTo        AnimalRelationship[]       @relation("AnimalRelationshipTo")
 
   @@index([status])
   @@index([legalCase])
+  @@index([intakeGroupId])
+}
+
+// V3.md Session 1: groups animals that physically arrived together (often thematically
+// named — "Irish Group", a luxury-brand-named group), confirmed from the real Horse Care
+// Board. Not ChangeLog-tracked — lookup-ish, same category as EventCategory, no legal-
+// defensibility angle on the grouping fact itself (unlike AnimalRelationship, which records
+// real bloodline claims).
+model IntakeGroup {
+  id         String   @id @default(cuid())
+  label      String
+  intakeDate DateTime
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  animals    Animal[]
+}
+
+// V3.md Session 1: one row per real-world relationship — the inverse (Rowan's sire is
+// Guinness, derived from Guinness SIRE_OF Rowan) is computed at display time
+// (src/lib/relationships.ts), never stored as a second row, so there's exactly one row to
+// correct if a relationship claim turns out to be wrong. recordedById follows the
+// AnimalLocationAssignment/EventSignup FK convention (a real Volunteer relation, not the
+// older plain-string performedBy/recordedBy pattern on CareEntry/MedicationLog/WeightEntry/
+// AnimalMetric) since this model is new as of this session. ChangeLog-tracked (confirmed
+// with James) — a lineage claim on a legalCase animal sits on the same legal-defensibility
+// surface as Animal itself (CONTEXT.md §4/§11).
+model AnimalRelationship {
+  id              String       @id @default(cuid())
+  animalId        String
+  relatedAnimalId String
+  relationType    RelationType
+  notes           String?
+  recordedById    String
+  createdAt       DateTime     @default(now())
+  animal          Animal       @relation("AnimalRelationshipFrom", fields: [animalId], references: [id])
+  relatedAnimal   Animal       @relation("AnimalRelationshipTo", fields: [relatedAnimalId], references: [id])
+  recordedBy      Volunteer    @relation(fields: [recordedById], references: [id])
+
+  @@index([animalId])
+  @@index([relatedAnimalId])
 }
 
 model AnimalPhoto {
@@ -458,12 +523,17 @@ model Placement {
   followUpCadence  Int?
   nextFollowUpDate DateTime?
   notes            String?
+  // V3.md Session 1: a shared token (not a new PlacementGroup table) across two or more
+  // Placement rows created for the same real-world adoption event, so bonded animals placed
+  // together are queryable as a set. Null for a normal single-animal placement.
+  placementGroupId String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   animal           Animal    @relation(fields: [animalId], references: [id])
 
   @@index([animalId])
   @@index([nextFollowUpDate])
+  @@index([placementGroupId])
 }
 
 model FeedType {

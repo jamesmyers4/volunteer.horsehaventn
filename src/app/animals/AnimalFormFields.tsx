@@ -29,6 +29,11 @@ export function AnimalFormFields({ defaults }: { defaults?: AnimalDefaults }) {
         Status
         <select name="status" defaultValue={defaults?.status ?? "ACTIVE"} className="rounded border px-2 py-1">
           <option value="ACTIVE">Active</option>
+          <option value="FOSTER">Foster</option>
+          <option value="PENDING_ADOPTION">Pending Adoption</option>
+          {/* Kept as a selectable option so an already-ADOPTED animal's edit page still
+              renders its real status correctly — the server rejects any attempt to
+              transition *into* ADOPTED from here; use "Record placement" instead. */}
           <option value="ADOPTED">Adopted</option>
           <option value="RETURNED">Returned</option>
           <option value="DECEASED">Deceased</option>

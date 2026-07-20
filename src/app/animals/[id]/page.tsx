@@ -9,6 +9,18 @@ import { createWeightEntry, createAnimalMetric } from "./metrics-actions"
 import { createLocationAssignment } from "./location-actions"
 import { getLocationHistory, currentFromHistory } from "@/lib/locations"
 import { HeadshotCropUpload } from "./HeadshotCropUpload"
+import { assignIntakeGroup } from "./intake-group-actions"
+import { createAnimalRelationship } from "./relationship-actions"
+import { createPlacement } from "./placement-actions"
+import { getRelationshipsForAnimal } from "@/lib/relationships"
+import { computeHhtDays } from "@/lib/placements"
+
+const RELATION_TYPE_LABELS: Record<string, string> = {
+  SIRE_OF: "Sire of",
+  DAM_OF: "Dam of",
+  SIBLING_OF: "Sibling of",
+  OTHER: "Related to (other)"
+}
 
 export default async function AnimalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const volunteer = await requireVolunteer()
@@ -77,6 +89,29 @@ export default async function AnimalDetailPage({ params }: { params: Promise<{ i
     orderBy: [{ type: "asc" }, { fieldCode: "asc" }, { name: "asc" }]
   })
 
+  // V3.md Session 1: intake cohort, real bloodline (sparse — most animals have none), and
+  // adoption/HHT tracking.
+  const intakeGroup = animal.intakeGroupId ? await prisma.intakeGroup.findUnique({ where: { id: animal.intakeGroupId } }) : null
+  const activeIntakeGroups = await prisma.intakeGroup.findMany({ where: { isActive: true }, orderBy: { label: "asc" } })
+  const relationships = await getRelationshipsForAnimal(id)
+  const otherAnimals = await prisma.animal.findMany({ where: { id: { not: id } }, orderBy: { name: "asc" } })
+
+  const placements = await prisma.placement.findMany({ where: { animalId: id }, orderBy: { placedDate: "desc" } })
+  const hhtDays = computeHhtDays(animal.intakeDate, placements)
+  const currentPlacement = placements.find((p) => !p.returnedDate) ?? null
+  const coPlacedAnimals = currentPlacement?.placementGroupId
+    ? await prisma.placement.findMany({
+        where: { placementGroupId: currentPlacement.placementGroupId, animalId: { not: id } },
+        include: { animal: true }
+      })
+    : []
+  // Candidates for co-adoption on the "Record placement" form below — anyone not already
+  // placed, same eligibility as this animal itself.
+  const placementCandidates = await prisma.animal.findMany({
+    where: { id: { not: id }, status: { in: ["ACTIVE", "FOSTER", "PENDING_ADOPTION"] } },
+    orderBy: { name: "asc" }
+  })
+
   const performerIds = Array.from(
     new Set([
       ...medicationRegimens.flatMap((r) => r.logs.map((l) => l.administeredBy)),
@@ -95,6 +130,9 @@ export default async function AnimalDetailPage({ params }: { params: Promise<{ i
   const canManageCare = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
   const canLogMetrics = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
   const canAssignLocation = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
+  const canManageIntakeGroup = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
+  const canManageRelationships = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
+  const canRecordPlacement = volunteer.role === "ADMIN"
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-8">
@@ -114,6 +152,8 @@ export default async function AnimalDetailPage({ params }: { params: Promise<{ i
         </dd>
         <dt className="text-gray-500">Intake date</dt>
         <dd>{animal.intakeDate ? animal.intakeDate.toDateString() : "—"}</dd>
+        <dt className="text-gray-500">HHT Days</dt>
+        <dd>{hhtDays ?? "—"}</dd>
         <dt className="text-gray-500">Handling color</dt>
         <dd>{animal.requiredHandlerColor}</dd>
         <dt className="text-gray-500">Legal case</dt>
@@ -131,6 +171,122 @@ export default async function AnimalDetailPage({ params }: { params: Promise<{ i
           </>
         )}
       </dl>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Intake Group & Family</h2>
+        <p className="text-sm">
+          Intake group:{" "}
+          {intakeGroup ? (
+            <Link href={`/intake-groups/${intakeGroup.id}`} className="underline">
+              {intakeGroup.label}
+            </Link>
+          ) : (
+            <span className="text-gray-500">none</span>
+          )}
+        </p>
+        {canManageIntakeGroup && (
+          <form action={assignIntakeGroup.bind(null, animal.id)} className="flex w-full max-w-xs items-center gap-2 text-sm">
+            <select name="intakeGroupId" defaultValue={animal.intakeGroupId ?? ""} className="rounded border px-2 py-1">
+              <option value="">None</option>
+              {activeIntakeGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.label}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="w-fit rounded border px-2 py-1 text-xs">
+              Save
+            </button>
+          </form>
+        )}
+        <div className="flex flex-col gap-1">
+          <h3 className="text-xs font-semibold text-gray-500">Relationships</h3>
+          {relationships.length === 0 && <p className="text-sm text-gray-500">No recorded relationships.</p>}
+          <ul className="flex flex-col gap-1 text-sm">
+            {relationships.map((rel) => (
+              <li key={rel.id}>
+                {rel.label}{" "}
+                <Link href={`/animals/${rel.otherAnimalId}`} className="underline">
+                  {rel.otherAnimalName}
+                </Link>
+                {rel.notes ? ` — ${rel.notes}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+        {canManageRelationships && (
+          <form action={createAnimalRelationship.bind(null, animal.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+            <h3 className="text-xs font-semibold text-gray-500">Add relationship</h3>
+            <select name="relatedAnimalId" required className="rounded border px-2 py-1">
+              {otherAnimals.map((other) => (
+                <option key={other.id} value={other.id}>
+                  {other.name}
+                </option>
+              ))}
+            </select>
+            <select name="relationType" required defaultValue="SIRE_OF" className="rounded border px-2 py-1">
+              {Object.entries(RELATION_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {animal.name} is {label.toLowerCase()} the selected animal above ({value})
+                </option>
+              ))}
+            </select>
+            <input type="text" name="notes" placeholder="notes" className="rounded border px-2 py-1" />
+            <button type="submit" className="w-fit rounded border px-4 py-2 text-xs">
+              Add relationship
+            </button>
+          </form>
+        )}
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Placement / Adoption</h2>
+        {currentPlacement ? (
+          <div className="text-sm">
+            <p>
+              Adopted by <span className="font-semibold">{currentPlacement.adopterName}</span> on {currentPlacement.placedDate.toDateString()}
+              {currentPlacement.adopterContact ? ` (${currentPlacement.adopterContact})` : ""}
+            </p>
+            {coPlacedAnimals.length > 0 && (
+              <p className="text-gray-500">
+                Adopted together with{" "}
+                {coPlacedAnimals.map((p, i) => (
+                  <span key={p.id}>
+                    {i > 0 ? ", " : ""}
+                    <Link href={`/animals/${p.animal.id}`} className="underline">
+                      {p.animal.name}
+                    </Link>
+                  </span>
+                ))}
+              </p>
+            )}
+            {currentPlacement.notes && <p className="text-gray-500">{currentPlacement.notes}</p>}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">Not currently placed.</p>
+        )}
+        {canRecordPlacement && animal.status !== "ADOPTED" && (
+          <form action={createPlacement.bind(null, animal.id)} className="flex w-full max-w-sm flex-col gap-2 text-sm">
+            <h3 className="text-xs font-semibold text-gray-500">Record placement</h3>
+            <input type="text" name="adopterName" placeholder="adopter name" required className="rounded border px-2 py-1" />
+            <input type="text" name="adopterContact" placeholder="adopter contact (optional)" className="rounded border px-2 py-1" />
+            <input type="date" name="placedDate" required className="rounded border px-2 py-1" />
+            <input type="text" name="notes" placeholder="notes" className="rounded border px-2 py-1" />
+            {placementCandidates.length > 0 && (
+              <fieldset className="flex flex-col gap-1">
+                <legend className="text-xs text-gray-500">Adopted together with (optional — bonded animals kept together)</legend>
+                {placementCandidates.map((candidate) => (
+                  <label key={candidate.id} className="flex items-center gap-2">
+                    <input type="checkbox" name="coAdoptedAnimalIds" value={candidate.id} />
+                    {candidate.name}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            <button type="submit" className="w-fit rounded bg-black px-4 py-2 text-xs text-white">
+              Record placement
+            </button>
+          </form>
+        )}
+      </section>
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold">Photos</h2>
         <div className="flex flex-wrap gap-3">
