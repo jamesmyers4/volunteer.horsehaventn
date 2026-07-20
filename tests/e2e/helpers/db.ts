@@ -20,7 +20,8 @@ const LOOKUP_TABLES = new Set([
   "EventCategory",
   "ShiftTemplate",
   "FarmSettings",
-  "FacilityTaskType"
+  "FacilityTaskType",
+  "ChatChannel"
 ])
 // Unlike Vitest's resetDb (tests/vitest/helpers/db.ts), Volunteer is preserved here — the
 // three seeded E2E test volunteers (test-users.ts) are provisioned once in global-setup and

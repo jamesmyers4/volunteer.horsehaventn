@@ -65,6 +65,8 @@ export const getVolunteerTag = (name = "Go Team") => prisma.volunteerTag.findFir
 export const getEventCategory = (name = "Meetup") => prisma.eventCategory.findFirstOrThrow({ where: { name } })
 export const getFacilityTaskType = (category: "TROUGH_CLEAN" | "STALL_CLEAN" | "STALL_STRIP" = "TROUGH_CLEAN") =>
   prisma.facilityTaskType.findFirstOrThrow({ where: { category } })
+export const getChatChannel = (type: "BROADCAST" | "ADMIN" | "SHIFT" = "BROADCAST", shiftType: "AM" | "PM" | null = null) =>
+  prisma.chatChannel.findFirstOrThrow({ where: { type, shiftType } })
 
 export async function createEvent(
   createdById: string,

@@ -167,6 +167,24 @@ async function main() {
     await prisma.farmSettings.create({ data: { activeSeason: "STANDARD" } })
   }
 
+  // V3.md Session 3: the fixed channel set CONTEXT.md §14 already described (admin/shift-leader,
+  // per-shift AM/PM, one-way broadcast) — findFirst-or-create per (type, shiftType) rather than
+  // a DB unique constraint, same singleton-ish pattern as FarmSettings just above, since these
+  // four rows are the complete set and nothing here needs a real uniqueness guarantee beyond
+  // "don't duplicate on repeat seed runs."
+  const chatChannels: { type: "BROADCAST" | "ADMIN" | "SHIFT"; shiftType: "AM" | "PM" | null; name: string }[] = [
+    { type: "BROADCAST", shiftType: null, name: "Farm-Wide Announcements" },
+    { type: "ADMIN", shiftType: null, name: "Admin & Shift Leads" },
+    { type: "SHIFT", shiftType: "AM", name: "AM Shift Chat" },
+    { type: "SHIFT", shiftType: "PM", name: "PM Shift Chat" }
+  ]
+  for (const channel of chatChannels) {
+    const existing = await prisma.chatChannel.findFirst({ where: { type: channel.type, shiftType: channel.shiftType } })
+    if (!existing) {
+      await prisma.chatChannel.create({ data: channel })
+    }
+  }
+
   for (const field of fieldCodes) {
     await prisma.location.upsert({
       where: { fieldCode: field.code },

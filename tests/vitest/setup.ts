@@ -22,6 +22,14 @@ vi.mock("next/navigation", () => ({
   })
 }))
 
+// revalidatePath() (src/app/chat/actions.ts) also requires a real Next.js request-scoped
+// "static generation store" that doesn't exist when a Server Action is called directly from
+// a plain Vitest test — same category as redirect()/notFound() above, a Next.js runtime
+// primitive to stub at the boundary rather than business logic to exercise for real here.
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn()
+}))
+
 beforeEach(async () => {
   await resetDb()
 })

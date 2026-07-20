@@ -27,7 +27,8 @@ const LOOKUP_TABLES = new Set([
   "EventCategory",
   "ShiftTemplate",
   "FarmSettings",
-  "FacilityTaskType"
+  "FacilityTaskType",
+  "ChatChannel"
 ])
 
 export { prisma }

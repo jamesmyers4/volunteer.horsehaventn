@@ -160,6 +160,15 @@ enum FacilityTaskCategory {
   STALL_STRIP
 }
 
+// V3.md Session 3: styling only for the pinned-alert banner (src/lib/alerts.ts's
+// isLiveAlert/isAlertVisibleForViewer handle gating, not this) — nullable on ChatMessage
+// since ordinary chat messages never set it, only a pinned alert does.
+enum AlertSeverity {
+  INFO
+  WARNING
+  URGENT
+}
+
 model Volunteer {
   id                    String                     @id @default(cuid())
   clerkId               String?                    @unique
@@ -950,21 +959,33 @@ model ChatChannel {
   id        String          @id @default(cuid())
   type      ChatChannelType
   name      String
+  // V3.md Session 3: set only when type is SHIFT, so a shift-scoped channel is queryable
+  // directly (channel.type = SHIFT AND channel.shiftType = X) instead of matched by name
+  // string — mirrors ShiftTemplate.shiftType's own already-established pattern. Null for
+  // BROADCAST/ADMIN channels.
+  shiftType ShiftType?
   createdAt DateTime        @default(now())
   messages  ChatMessage[]
 }
 
 model ChatMessage {
-  id        String      @id @default(cuid())
+  id        String         @id @default(cuid())
   channelId String
   senderId  String
   body      String
-  createdAt DateTime    @default(now())
-  channel   ChatChannel @relation(fields: [channelId], references: [id])
-  sender    Volunteer   @relation(fields: [senderId], references: [id])
+  // V3.md Session 3: alert-only fields, all nullable/defaulted so ordinary chat messages
+  // leave them untouched. Only ADMIN can set pinned = true (enforced in
+  // src/app/chat/actions.ts, not just hidden in the UI). severity is display styling only.
+  severity  AlertSeverity?
+  expiresAt DateTime?
+  pinned    Boolean        @default(false)
+  createdAt DateTime       @default(now())
+  channel   ChatChannel    @relation(fields: [channelId], references: [id])
+  sender    Volunteer      @relation(fields: [senderId], references: [id])
 
   @@index([channelId])
   @@index([senderId])
+  @@index([pinned])
 }
 
 model ChangeLog {

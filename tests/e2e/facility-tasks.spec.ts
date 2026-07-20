@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures"
 import { prisma } from "./helpers/db"
+import { TEST_USERS } from "./test-users"
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 // Matches the app's own UTC-date-string convention (src/lib/facilityTasks.ts) so "today" here
@@ -43,7 +44,11 @@ test("an Admin schedules a recurring Trough Clean template for today/AM, and a S
   await expect(todaySection.locator("tr", { hasText: "Trough Clean" }).filter({ hasText: "L1" }).getByText("Done")).toBeVisible()
 
   const completion = await prisma.facilityTaskCompletion.findFirstOrThrow({ where: { shiftType: "AM" }, orderBy: { createdAt: "desc" } })
-  const shiftLead = await prisma.volunteer.findFirstOrThrow({ where: { role: "SHIFT_LEAD" } })
+  // Filter by the canonical seeded test user's email, not bare role — other specs (e.g.
+  // admin.spec.ts's role-change test) create throwaway volunteers and promote them to
+  // SHIFT_LEAD without reverting, so a plain role filter with no orderBy can non-deterministically
+  // resolve to the wrong row once those accumulate within a run.
+  const shiftLead = await prisma.volunteer.findFirstOrThrow({ where: { email: TEST_USERS.shiftLead.email } })
   expect(completion.completedById).toBe(shiftLead.id)
   expect(completion.templateId).not.toBeNull()
 })
@@ -63,7 +68,9 @@ test("a Volunteer logs an ad hoc quick-add completion outside the recurring patt
   await quickAddForm.locator("input[name=notes]").fill("Extra clean after storm runoff")
   await Promise.all([volunteerPage.waitForNavigation(), quickAddForm.getByRole("button", { name: "Log completion" }).click()])
 
-  const volunteer = await prisma.volunteer.findFirstOrThrow({ where: { role: "VOLUNTEER" } })
+  // Same email-not-role reasoning as the SHIFT_LEAD lookup above — other specs create
+  // throwaway VOLUNTEER-role rows too (e.g. admin.spec.ts's canScheduleEvents test).
+  const volunteer = await prisma.volunteer.findFirstOrThrow({ where: { email: TEST_USERS.volunteer.email } })
   const completion = await prisma.facilityTaskCompletion.findFirstOrThrow({ where: { notes: "Extra clean after storm runoff" } })
   expect(completion.templateId).toBeNull()
   expect(completion.completedById).toBe(volunteer.id)
