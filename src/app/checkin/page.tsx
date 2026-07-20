@@ -3,7 +3,7 @@ import { requireVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getFarmSettings } from "@/lib/farmSettings"
 import { resolveShiftTimesForOccurrence, type ShiftTypeValue } from "@/lib/shifts"
-import { submitCheckIn, setShiftActualTimes } from "./actions"
+import { submitCheckIn, setShiftActualTimes, updateOwnCheckIn } from "./actions"
 
 const SHIFT_TYPES: ShiftTypeValue[] = ["AM", "PM"]
 
@@ -25,10 +25,16 @@ export default async function CheckInPage({
   const todayString = new Date().toISOString().slice(0, 10)
   const todayStart = new Date(todayString)
 
-  const [farmSettings, templates, todaysShifts] = await Promise.all([
+  const [farmSettings, templates, todaysShifts, myRecentCheckIns] = await Promise.all([
     getFarmSettings(),
     prisma.shiftTemplate.findMany(),
-    prisma.shift.findMany({ where: { date: todayStart } })
+    prisma.shift.findMany({ where: { date: todayStart } }),
+    prisma.checkIn.findMany({
+      where: { volunteerId: volunteer.id },
+      include: { shift: true, workType: true },
+      orderBy: { checkInAt: "desc" },
+      take: 5
+    })
   ])
   const templateByType = new Map(templates.map((t) => [t.shiftType, t]))
   const shiftByType = new Map(todaysShifts.map((s) => [s.type, s]))
@@ -46,9 +52,14 @@ export default async function CheckInPage({
     <main className="flex flex-1 flex-col items-center gap-8 p-8">
       <div className="flex w-full max-w-sm flex-col items-center gap-4">
         <h1 className="text-xl font-semibold">Check In — {volunteer.name}</h1>
-        <Link href="/checkin/code" className="text-xs underline">
-          My check-in code / QR
-        </Link>
+        <div className="flex gap-3">
+          <Link href="/checkin/code" className="text-xs underline">
+            My check-in code / QR
+          </Link>
+          <Link href="/checkin/roster" className="text-xs underline">
+            Shift roster
+          </Link>
+        </div>
         {success && <p className="rounded bg-green-100 px-4 py-2 text-sm text-green-800">Shift logged.</p>}
 
         <p className="text-xs text-gray-500">
@@ -170,6 +181,49 @@ export default async function CheckInPage({
                       </form>
                     </td>
                   )}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="flex w-full max-w-sm flex-col gap-2">
+        <h2 className="text-sm font-semibold">Your recent check-ins</h2>
+        <p className="text-xs text-gray-500">
+          Correct a time here if it&apos;s wrong — this also covers a bulk roster entry a shift lead logged on your behalf (
+          <span className="font-mono">ADMIN_ENTRY</span>).
+        </p>
+        {myRecentCheckIns.length === 0 && <p className="text-xs text-gray-500">No check-ins yet.</p>}
+        <table className="w-full text-left text-sm">
+          <tbody>
+            {myRecentCheckIns.map((checkIn) => {
+              const dateString = checkIn.checkInAt.toISOString().slice(0, 10)
+              const timeIn = checkIn.checkInAt.toISOString().slice(11, 16)
+              const timeOut = checkIn.checkOutAt ? checkIn.checkOutAt.toISOString().slice(11, 16) : ""
+              return (
+                <tr key={checkIn.id} className="border-b align-top">
+                  <td className="py-2 pr-2 align-middle text-xs">
+                    {dateString} {checkIn.shift.type}
+                    <br />
+                    <span className="text-gray-500">{checkIn.checkInMethod}</span>
+                  </td>
+                  <td className="py-2">
+                    <form action={updateOwnCheckIn.bind(null, checkIn.id)} className="flex flex-wrap items-center gap-1">
+                      <input type="time" name="checkInTime" defaultValue={timeIn} required className="w-24 rounded border px-1 py-1" />
+                      <input type="time" name="checkOutTime" defaultValue={timeOut} required className="w-24 rounded border px-1 py-1" />
+                      <input
+                        type="text"
+                        name="notes"
+                        defaultValue={checkIn.notes ?? ""}
+                        placeholder="Notes"
+                        className="w-28 rounded border px-1 py-1"
+                      />
+                      <button type="submit" className="rounded border px-2 py-1 text-xs">
+                        Save
+                      </button>
+                    </form>
+                  </td>
                 </tr>
               )
             })}

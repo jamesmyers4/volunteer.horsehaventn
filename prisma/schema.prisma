@@ -220,6 +220,9 @@ model Volunteer {
   eventSignups          EventSignup[]
   recordedRelationships AnimalRelationship[]
   completedFacilityTasks FacilityTaskCompletion[]
+  // V3.md Session 4: the reverse side of Shift.assignedLeadId — occurrences this volunteer
+  // has been named occurrence-scoped lead for.
+  ledShifts             Shift[]                    @relation("ShiftAssignedLead")
 
   @@index([clerkId])
   @@index([role])
@@ -357,10 +360,19 @@ model Shift {
   // dedicated field on the row, same reasoning CONTEXT.md §10 gives for PastureAssignment.
   actualStartTime String?
   actualEndTime   String?
+  // V3.md Session 4: occurrence-scoped shift leadership, layered on top of (not a replacement
+  // for) the existing global SHIFT_LEAD role — names who's actually running this specific
+  // date+type occurrence, e.g. a plain VOLUNTEER filling in as lead for one shift. Settable by
+  // Admin-or-Shift-Lead (src/app/checkin/roster/actions.ts's assignShiftLead), same permission
+  // split as this model's own actualStartTime/actualEndTime above. Who/when of the assignment
+  // itself is captured by ChangeLog (Shift is already tracked), not a dedicated field.
+  assignedLeadId String?
+  assignedLead   Volunteer? @relation("ShiftAssignedLead", fields: [assignedLeadId], references: [id])
   createdAt DateTime  @default(now())
   checkIns  CheckIn[]
 
   @@unique([date, type])
+  @@index([assignedLeadId])
 }
 
 // V2.md Session 5: singleton config row (enforced app-side via getFarmSettings() in

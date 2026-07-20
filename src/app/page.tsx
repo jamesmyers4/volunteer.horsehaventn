@@ -18,6 +18,9 @@ export default function Home() {
           <Link href="/checkin" className="text-sm underline">
             Check in
           </Link>
+          <Link href="/checkin/roster" className="text-sm underline">
+            Shift Roster
+          </Link>
           <Link href="/animals" className="text-sm underline">
             Horses
           </Link>

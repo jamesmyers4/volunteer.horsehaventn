@@ -73,3 +73,32 @@ export async function setShiftActualTimes(date: string, shiftType: "AM" | "PM", 
 
   redirect("/checkin")
 }
+
+// V3.md Session 4: this path didn't exist before this session — flagged in V3.md as
+// something to "confirm whether it exists, add it if not." Self-only, matching this
+// codebase's established self-attestation pattern (CredentialRecord, EventSignup) rather
+// than an admin-on-behalf-of-someone-else path. Exists specifically so a volunteer can
+// correct a bulk ADMIN_ENTRY default (src/app/checkin/roster/actions.ts) that doesn't match
+// when they actually arrived/left, but works for any of their own CheckIn rows.
+export async function updateOwnCheckIn(checkInId: string, formData: FormData) {
+  const volunteer = await requireVolunteer()
+
+  const existing = await prisma.checkIn.findUniqueOrThrow({ where: { id: checkInId } })
+  if (existing.volunteerId !== volunteer.id) throw new Error("Not authorized")
+
+  const dateString = existing.checkInAt.toISOString().slice(0, 10)
+  const checkInTime = String(formData.get("checkInTime"))
+  const checkOutTime = String(formData.get("checkOutTime"))
+  const notes = formData.get("notes") ? String(formData.get("notes")) : undefined
+
+  await withChangeLog(prisma, volunteer.id, "Volunteer self-edit of own check-in").checkIn.update({
+    where: { id: checkInId },
+    data: {
+      checkInAt: new Date(`${dateString}T${checkInTime}:00`),
+      checkOutAt: new Date(`${dateString}T${checkOutTime}:00`),
+      notes
+    }
+  })
+
+  redirect("/checkin?success=1")
+}
