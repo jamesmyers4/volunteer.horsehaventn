@@ -28,7 +28,9 @@ const LOOKUP_TABLES = new Set([
   "ShiftTemplate",
   "FarmSettings",
   "FacilityTaskType",
-  "ChatChannel"
+  "ChatChannel",
+  "ChecklistTemplate",
+  "ChecklistTemplateItem"
 ])
 
 export { prisma }

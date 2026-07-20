@@ -67,6 +67,27 @@ export const getFacilityTaskType = (category: "TROUGH_CLEAN" | "STALL_CLEAN" | "
   prisma.facilityTaskType.findFirstOrThrow({ where: { category } })
 export const getChatChannel = (type: "BROADCAST" | "ADMIN" | "SHIFT" = "BROADCAST", shiftType: "AM" | "PM" | null = null) =>
   prisma.chatChannel.findFirstOrThrow({ where: { type, shiftType } })
+export const getChecklistTemplate = (name = "End of Shift Report") => prisma.checklistTemplate.findFirstOrThrow({ where: { name } })
+
+// ChecklistTemplate is a LOOKUP_TABLE (tests/vitest/helpers/db.ts) — not truncated between
+// tests, so a run-unique name avoids colliding with itself across repeated local runs, same
+// precedent as createIntakeGroup/createVolunteer's own randomUUID-suffixed defaults.
+export async function createChecklistTemplateWithItem(
+  overrides: Partial<{ name: string; prompt: string; responseType: "BOOLEAN" | "TEXT" | "NUMBER" }> = {}
+) {
+  const template = await prisma.checklistTemplate.create({
+    data: { name: overrides.name ?? `Test Checklist ${randomUUID().slice(0, 8)}` }
+  })
+  const item = await prisma.checklistTemplateItem.create({
+    data: {
+      templateId: template.id,
+      order: 0,
+      prompt: overrides.prompt ?? "Test prompt",
+      responseType: overrides.responseType ?? "TEXT"
+    }
+  })
+  return { template, item }
+}
 
 export async function createEvent(
   createdById: string,

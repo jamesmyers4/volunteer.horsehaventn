@@ -47,7 +47,11 @@ export default async function ShiftRosterPage({
           <Link href={`/checkin/roster?date=${dateString}&shiftType=PM`} className="underline">
             PM
           </Link>
-          . Back to <Link href="/checkin" className="underline">Check In</Link>.
+          . Back to <Link href="/checkin" className="underline">Check In</Link>. See the{" "}
+          <Link href={`/checkin/shift-report?date=${dateString}&shiftType=${shiftType}`} className="underline">
+            end-of-shift report
+          </Link>
+          .
         </p>
         {success && <p className="rounded bg-green-100 px-4 py-2 text-sm text-green-800">Attendance recorded.</p>}
 

@@ -169,6 +169,16 @@ enum AlertSeverity {
   URGENT
 }
 
+// V3.md Session 5: the three response shapes the generic end-of-shift checklist engine
+// supports. Fixed by the engine itself (how a ChecklistTemplateItem's value gets rendered/
+// validated), not something staff add to casually — same "won't casually grow" criteria
+// CLAUDE.md reserves for a hard enum, rather than a lookup table.
+enum ChecklistResponseType {
+  BOOLEAN
+  TEXT
+  NUMBER
+}
+
 model Volunteer {
   id                    String                     @id @default(cuid())
   clerkId               String?                    @unique
@@ -223,6 +233,9 @@ model Volunteer {
   // V3.md Session 4: the reverse side of Shift.assignedLeadId — occurrences this volunteer
   // has been named occurrence-scoped lead for.
   ledShifts             Shift[]                    @relation("ShiftAssignedLead")
+  // V3.md Session 5: end-of-shift reports this volunteer has personally submitted (always the
+  // shift's own assignedLeadId or an Admin — see canSubmitShiftReport in src/lib/shiftReport.ts).
+  submittedShiftReports ShiftReport[]
 
   @@index([clerkId])
   @@index([role])
@@ -370,6 +383,9 @@ model Shift {
   assignedLead   Volunteer? @relation("ShiftAssignedLead", fields: [assignedLeadId], references: [id])
   createdAt DateTime  @default(now())
   checkIns  CheckIn[]
+  // V3.md Session 5: at most one end-of-shift report per occurrence (business rule, not just
+  // convention) — enforced by the @unique on ShiftReport.shiftId below, not app-side alone.
+  report    ShiftReport?
 
   @@unique([date, type])
   @@index([assignedLeadId])
@@ -998,6 +1014,73 @@ model ChatMessage {
   @@index([channelId])
   @@index([senderId])
   @@index([pinned])
+}
+
+// V3.md Session 5: extensible engine for the shift leader's end-of-shift report — the real
+// ~5-6 page Google Form content isn't available yet, so this session builds the generic
+// question/response machinery only, seeded with exactly one placeholder item (see
+// prisma/seed.ts) so the feature is functional immediately. Admin-editable lookup, same
+// category as WorkType/FeedType/CareType — not ChangeLog-tracked. name is @unique for the
+// same upsert-seeding reason CredentialType/EventCategory/FacilityTaskType are — avoids the
+// no-unique-constraint duplication bug CLAUDE.md's Repo Layout notes was already hit once.
+model ChecklistTemplate {
+  id        String                  @id @default(cuid())
+  name      String                  @unique
+  isActive  Boolean                 @default(true)
+  createdAt DateTime                @default(now())
+  items     ChecklistTemplateItem[]
+  reports   ShiftReport[]
+}
+
+// One row per question on a ChecklistTemplate. order is a plain Int (not itself unique-
+// constrained) since admin reordering is just editing the number on each row — no gap-free
+// invariant is needed for a list this small to render correctly sorted.
+model ChecklistTemplateItem {
+  id           String                @id @default(cuid())
+  templateId   String
+  order        Int
+  prompt       String
+  responseType ChecklistResponseType
+  createdAt    DateTime              @default(now())
+  template     ChecklistTemplate     @relation(fields: [templateId], references: [id])
+  responses    ShiftReportResponse[]
+
+  @@index([templateId])
+}
+
+// One ShiftReport per Shift (@unique below) — the shift lead's end-of-shift submission.
+// ChangeLog-tracked (confirmed with James): parallels Shift/CheckIn, both already tracked,
+// and captures who actually submitted the report and when, same legal-adjacent
+// defensibility reasoning as those two rather than a plain-lookup skip.
+model ShiftReport {
+  id           String                @id @default(cuid())
+  shiftId      String                @unique
+  templateId   String
+  submittedById String
+  submittedAt  DateTime              @default(now())
+  shift        Shift                 @relation(fields: [shiftId], references: [id])
+  template     ChecklistTemplate     @relation(fields: [templateId], references: [id])
+  submittedBy  Volunteer             @relation(fields: [submittedById], references: [id])
+  responses    ShiftReportResponse[]
+
+  @@index([submittedById])
+}
+
+// value stores every responseType as text ("true"/"false" for BOOLEAN, a plain number string
+// for NUMBER) — deliberate simplicity for this skeleton session (V3.md's own wording) rather
+// than a polymorphic set of typed columns for a schema whose real question set doesn't exist
+// yet. Not ChangeLog-tracked — create-once with no edit path in this session, and provenance
+// (who/when) already lives on the parent ShiftReport rather than this row.
+model ShiftReportResponse {
+  id            String                @id @default(cuid())
+  shiftReportId String
+  templateItemId String
+  value         String
+  shiftReport   ShiftReport           @relation(fields: [shiftReportId], references: [id])
+  templateItem  ChecklistTemplateItem @relation(fields: [templateItemId], references: [id])
+
+  @@index([shiftReportId])
+  @@index([templateItemId])
 }
 
 model ChangeLog {

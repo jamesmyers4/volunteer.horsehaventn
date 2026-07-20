@@ -185,6 +185,29 @@ async function main() {
     }
   }
 
+  // V3.md Session 5: exactly one placeholder template/item so the end-of-shift report feature
+  // is functional immediately — real questions get added later through the same admin CRUD
+  // this session builds, once the real ~5-6 page form content is available (V3.md's explicit
+  // "do not invent specific checklist questions" instruction).
+  const defaultChecklistTemplate = await prisma.checklistTemplate.upsert({
+    where: { name: "End of Shift Report" },
+    update: {},
+    create: { name: "End of Shift Report" }
+  })
+  const existingChecklistItem = await prisma.checklistTemplateItem.findFirst({
+    where: { templateId: defaultChecklistTemplate.id }
+  })
+  if (!existingChecklistItem) {
+    await prisma.checklistTemplateItem.create({
+      data: {
+        templateId: defaultChecklistTemplate.id,
+        order: 0,
+        prompt: "General shift notes",
+        responseType: "TEXT"
+      }
+    })
+  }
+
   for (const field of fieldCodes) {
     await prisma.location.upsert({
       where: { fieldCode: field.code },

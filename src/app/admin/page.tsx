@@ -76,6 +76,12 @@ export default async function AdminPage() {
             </Link>{" "}
             — active season, AM/PM reference times
           </li>
+          <li>
+            <Link href="/checklists" className="underline">
+              End-of-shift checklist templates
+            </Link>{" "}
+            — the generic engine behind the shift leader&apos;s end-of-shift report
+          </li>
         </ul>
       </section>
 
