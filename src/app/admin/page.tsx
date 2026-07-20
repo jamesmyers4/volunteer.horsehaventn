@@ -8,6 +8,11 @@ import { requireRole } from "@/lib/auth"
 // Categories, Volunteers/user-management), or to the existing feature page that already
 // carries full Admin-gated CRUD for that table (Tags, Training, Tiers, Settings) — see
 // HANDOFF.md for why those weren't rebuilt here.
+// V3.md Session 7 extends this same split: Intake Groups and End-of-Shift Checklist Templates
+// already had full CRUD from their own sessions (V3 Sessions 1/5), so they're linked out here
+// rather than duplicated, same precedent as Tags/Training/Tiers/Settings above. Facility Task
+// Types, the recurring-task monthly calendar, and the pinned-alert composer had no dedicated
+// screen anywhere yet, so those three are genuinely new pages under /admin.
 async function checkAccess() {
   try {
     await requireRole(["ADMIN"])
@@ -81,6 +86,30 @@ export default async function AdminPage() {
               End-of-shift checklist templates
             </Link>{" "}
             — the generic engine behind the shift leader&apos;s end-of-shift report
+          </li>
+          <li>
+            <Link href="/intake-groups" className="underline">
+              Intake groups
+            </Link>{" "}
+            — cohorts that arrived together (full create/edit/deactivate already lives here, not rebuilt under /admin)
+          </li>
+          <li>
+            <Link href="/admin/facility-task-types" className="underline">
+              Facility task types
+            </Link>{" "}
+            — trough/stall clean/strip names and active status (a fixed set of three)
+          </li>
+          <li>
+            <Link href="/admin/facility-tasks" className="underline">
+              Recurring facility task calendar
+            </Link>{" "}
+            — monthly calendar view + weekday/shift slot assignment for trough and stall care
+          </li>
+          <li>
+            <Link href="/admin/alerts" className="underline">
+              Pinned alerts
+            </Link>{" "}
+            — compose a banner alert targeting Farm-Wide or a specific shift channel
           </li>
         </ul>
       </section>

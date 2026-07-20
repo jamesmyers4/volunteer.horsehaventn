@@ -70,3 +70,48 @@ export async function getExpectedFacilityTasks(date: Date, shiftType: ShiftTypeV
 }
 
 export type ExpectedFacilityTask = Awaited<ReturnType<typeof getExpectedFacilityTasks>>[number]
+
+/**
+ * V3.md Session 7: the Admin Console's monthly calendar view. Same derive-don't-cache
+ * principle as getExpectedFacilityTasks above, just expanded across every date in a month
+ * instead of a single day — RecurringTaskTemplate rows are still the only stored fact,
+ * matched against each date's own dayOfWeek. Deliberately no shiftType filter (unlike
+ * getExpectedFacilityTasks) since the calendar shows both AM and PM slots per day at once.
+ */
+export async function getRecurringTasksForMonth(monthStart: Date) {
+  const year = monthStart.getUTCFullYear()
+  const month = monthStart.getUTCMonth()
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+
+  const templates = await prisma.recurringTaskTemplate.findMany({
+    where: { isActive: true },
+    include: { taskType: true, targetLocation: true },
+    orderBy: [{ shiftType: "asc" }, { taskTypeId: "asc" }]
+  })
+
+  const days = []
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(Date.UTC(year, month, day))
+    const dayOfWeek = date.getUTCDay()
+    days.push({ date, dayOfWeek, templates: templates.filter((t) => t.dayOfWeek === dayOfWeek) })
+  }
+  return days
+}
+
+export type MonthRecurringTasks = Awaited<ReturnType<typeof getRecurringTasksForMonth>>
+
+// "YYYY-MM" query-param parsing for month-to-month calendar navigation — defaults to the
+// current month (UTC, matching this file's own startOfDay convention) for a missing/malformed
+// param rather than throwing, since a bad/absent query param shouldn't 500 the page.
+export function parseMonthParam(monthParam: string | undefined, now: Date = new Date()) {
+  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+    const [year, month] = monthParam.split("-").map(Number)
+    return new Date(Date.UTC(year, month - 1, 1))
+  }
+  const today = startOfDay(now)
+  return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))
+}
+
+export function monthParamFor(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`
+}

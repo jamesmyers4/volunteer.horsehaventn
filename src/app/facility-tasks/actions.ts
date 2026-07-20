@@ -28,7 +28,12 @@ export async function createRecurringTaskTemplate(formData: FormData) {
     data: { taskTypeId, targetLocationId, dayOfWeek, shiftType }
   })
 
-  redirect("/facility-tasks")
+  // V3.md Session 7: the Admin Console's own calendar screen reuses this action rather than
+  // duplicating create logic, and needs to land back on /admin/facility-tasks instead of the
+  // plain /facility-tasks list — same optional redirectTo pattern already established for
+  // createLocation/createFeedingOverride/createLocationAssignment.
+  const redirectTo = formData.get("redirectTo")
+  redirect(redirectTo ? String(redirectTo) : "/facility-tasks")
 }
 
 // No hard deletes (CLAUDE.md) — deactivate via isActive, same as IntakeGroup/Location's own
@@ -54,7 +59,8 @@ export async function updateRecurringTaskTemplate(templateId: string, formData: 
     data: { taskTypeId, targetLocationId, dayOfWeek, shiftType, isActive }
   })
 
-  redirect("/facility-tasks")
+  const redirectTo = formData.get("redirectTo")
+  redirect(redirectTo ? String(redirectTo) : "/facility-tasks")
 }
 
 // Any signed-in volunteer on a shift can log a completion — no role gate, matching CheckIn's
