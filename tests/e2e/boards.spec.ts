@@ -47,6 +47,88 @@ test("the Feed Board shows current feed/hay/meds/instructions, with today's over
   await expect(row.getByText("Feed slowly")).toBeVisible()
 })
 
+test("the Feed Board shows Skin Care (CareEntry) and standing Handling Notes as sources distinct from Feed and Meds for the same animal/day", async ({
+  volunteerPage
+}) => {
+  const animal = await prisma.animal.create({
+    data: { name: "Marigold", status: "ACTIVE", handlingNotes: "Do not approach from the left — blind in left eye" }
+  })
+  const senior = await prisma.feedType.findFirstOrThrow({ where: { name: "Senior" } })
+  await prisma.feedingBaseline.create({ data: { animalId: animal.id, feedTypeId: senior.id, shift: "AM", amount: "1" } })
+  await prisma.medicationRegimen.create({
+    data: { animalId: animal.id, drugName: "Bute", dose: "1g", frequency: "daily", startDate: new Date("2026-01-01") }
+  })
+  const flyMask = await prisma.careType.findFirstOrThrow({ where: { name: "Fly Mask / Spray" } })
+  const admin = await prisma.volunteer.findFirstOrThrow({ where: { role: "ADMIN" } })
+  await prisma.careEntry.create({
+    data: {
+      animalId: animal.id,
+      careTypeId: flyMask.id,
+      date: new Date(new Date().toISOString().slice(0, 10)),
+      notes: "Applied fresh fly mask",
+      performedBy: admin.id
+    }
+  })
+  const attnFlag = await prisma.careType.findFirstOrThrow({ where: { name: "ATTN / Handling Flag" } })
+  await prisma.careEntry.create({
+    data: {
+      animalId: animal.id,
+      careTypeId: attnFlag.id,
+      date: new Date(new Date().toISOString().slice(0, 10)),
+      notes: "Cold hose if breaths per min exceed 20",
+      performedBy: admin.id
+    }
+  })
+
+  await volunteerPage.goto("/feed-board")
+  const row = volunteerPage.locator("tr", { hasText: "Marigold" })
+
+  // Skin Care and Meds are correctly attributed to separate columns, not conflated.
+  await expect(row.getByText("Fly Mask / Spray: Applied fresh fly mask")).toBeVisible()
+  const medsCell = row.locator("td").nth(4)
+  await expect(medsCell.getByText("Fly Mask / Spray")).not.toBeVisible()
+  await expect(medsCell.getByText("Bute")).toBeVisible()
+
+  // Handling Notes column carries both the standing Animal.handlingNotes value and today's
+  // dated ATTN flag — two distinct sources sharing one column.
+  await expect(row.getByText("Do not approach from the left — blind in left eye")).toBeVisible()
+  await expect(row.getByText("ATTN: Cold hose if breaths per min exceed 20")).toBeVisible()
+})
+
+test("the Feed Board excludes a MedicationRegimen whose endDate is in the past, though its MedicationLog history remains directly queryable", async ({
+  volunteerPage
+}) => {
+  const animal = await prisma.animal.create({ data: { name: "Sundance", status: "ACTIVE" } })
+  const expiredRegimen = await prisma.medicationRegimen.create({
+    data: {
+      animalId: animal.id,
+      drugName: "Previcox",
+      dose: "227mg",
+      frequency: "daily",
+      startDate: new Date("2026-06-01"),
+      endDate: new Date("2026-07-01")
+    }
+  })
+  await prisma.medicationRegimen.create({
+    data: { animalId: animal.id, drugName: "Bute", dose: "1g", frequency: "daily", startDate: new Date("2026-01-01") }
+  })
+  const admin = await prisma.volunteer.findFirstOrThrow({ where: { role: "ADMIN" } })
+  await prisma.medicationLog.create({
+    data: { medicationRegimenId: expiredRegimen.id, date: new Date("2026-06-15"), administered: true, administeredBy: admin.id }
+  })
+
+  await volunteerPage.goto("/feed-board")
+  const row = volunteerPage.locator("tr", { hasText: "Sundance" })
+  await expect(row.getByText("Bute")).toBeVisible()
+  await expect(row.getByText("Previcox")).not.toBeVisible()
+
+  // The regimen is gone from the "current" board display, but its administration history is
+  // still queryable directly — nothing about ending a regimen deletes or hides its MedicationLog.
+  const history = await prisma.medicationLog.findMany({ where: { medicationRegimenId: expiredRegimen.id } })
+  expect(history).toHaveLength(1)
+  expect(history[0].administered).toBe(true)
+})
+
 test("the Feed Board links each row to that animal's current location on the Turnout Board", async ({ volunteerPage }) => {
   const animal = await prisma.animal.create({ data: { name: "Piper", status: "ACTIVE" } })
   const location = await prisma.location.findFirstOrThrow({ where: { fieldCode: "L2" } })

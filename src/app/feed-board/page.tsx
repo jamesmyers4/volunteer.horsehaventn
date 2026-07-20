@@ -13,6 +13,16 @@ async function loadFeedingBaselines(animalIds: string[], today: Date, tomorrow: 
 
 type FeedingBaselineRow = Awaited<ReturnType<typeof loadFeedingBaselines>>[number]
 
+// V3.md Session 6: the real board tracks "Skin Care" as its own daily field, separate from
+// Meds — fits the existing CareType/CareEntry model (CONTEXT.md §12), filtered to the
+// SEASONAL/GROOMING categories that cover fly masks/topical sprays/leg wraps/blanket changes/
+// grooming. Distinct from the "ATTN / Handling Flag" CareType (category MEDICAL, looked up by
+// name below) — that one is a short-lived, date-specific health flag that doesn't fit
+// Animal.handlingNotes (a single evergreen field), so it renders alongside handlingNotes in
+// the Handling Notes column instead of alongside Skin Care.
+const SKIN_CARE_CATEGORIES = ["SEASONAL", "GROOMING"] as const
+const ATTN_CARE_TYPE_NAME = "ATTN / Handling Flag"
+
 // V2.md Session 6: read-only large-screen display built entirely on data already written by
 // Sessions 1-5 (feeding baseline+override, care/medication, location) — no new write models,
 // per V2.md's own "reuse existing... don't create parallel ones" instruction. Access follows
@@ -60,6 +70,29 @@ export default async function FeedBoardPage() {
     medicationByAnimal.set(regimen.animalId, list)
   }
 
+  // V3.md Session 6: one query for today's CareEntry rows, split in-memory into Skin Care
+  // (SEASONAL/GROOMING) vs. the ATTN handling flag (matched by CareType name, looked up once
+  // rather than re-querying per animal) — same "one query, filter in JS" pattern already used
+  // above for mainFeeds/hayFeeds.
+  const todaysCareEntries = await prisma.careEntry.findMany({
+    where: { animalId: { in: animalIds }, date: { gte: today, lt: tomorrow } },
+    include: { careType: true },
+    orderBy: { createdAt: "asc" }
+  })
+  const skinCareByAnimal = new Map<string, typeof todaysCareEntries>()
+  const attnFlagsByAnimal = new Map<string, typeof todaysCareEntries>()
+  for (const entry of todaysCareEntries) {
+    if (entry.careType.name === ATTN_CARE_TYPE_NAME) {
+      const list = attnFlagsByAnimal.get(entry.animalId) ?? []
+      list.push(entry)
+      attnFlagsByAnimal.set(entry.animalId, list)
+    } else if ((SKIN_CARE_CATEGORIES as readonly string[]).includes(entry.careType.category)) {
+      const list = skinCareByAnimal.get(entry.animalId) ?? []
+      list.push(entry)
+      skinCareByAnimal.set(entry.animalId, list)
+    }
+  }
+
   // For the "link out to the Turnout Board" affordance — the day location an animal is
   // currently assigned to, derived the same way every other page in this app derives
   // "current" (latest effectiveAt row), not a stored pointer.
@@ -76,8 +109,8 @@ export default async function FeedBoardPage() {
       <div>
         <h1 className="text-xl font-semibold">Feed Board</h1>
         <p className="text-sm text-gray-500">
-          One row per active horse — feed, hay, meds, and special instructions at a glance. Read-only here; Admin/Shift-Lead can adjust
-          today&apos;s feed/hay amount and special instructions inline on a desktop screen.
+          One row per active horse — feed, hay, skin care, meds, special instructions, and handling notes at a glance. Read-only here;
+          Admin/Shift-Lead can adjust today&apos;s feed/hay amount and special instructions inline on a desktop screen.
         </p>
       </div>
       <table className="w-full text-left text-sm">
@@ -86,8 +119,10 @@ export default async function FeedBoardPage() {
             <th className="py-2 pr-4">Horse</th>
             <th className="py-2 pr-4">Feed</th>
             <th className="py-2 pr-4">Hay</th>
+            <th className="py-2 pr-4">Skin Care</th>
             <th className="py-2 pr-4">Meds</th>
-            <th className="py-2">Special instructions</th>
+            <th className="py-2 pr-4">Special instructions</th>
+            <th className="py-2">Handling notes</th>
           </tr>
         </thead>
         <tbody>
@@ -99,6 +134,8 @@ export default async function FeedBoardPage() {
             const regimens = medicationByAnimal.get(animal.id) ?? []
             const dayLocation = dayLocationByAnimal.get(animal.id)
             const instructionBaselines = baselines.filter((b) => (b.overrides[0]?.notes ?? b.notes) != null)
+            const skinCareEntries = skinCareByAnimal.get(animal.id) ?? []
+            const attnFlags = attnFlagsByAnimal.get(animal.id) ?? []
 
             return (
               <tr key={animal.id} className="border-b align-top">
@@ -149,6 +186,20 @@ export default async function FeedBoardPage() {
                   )}
                 </td>
                 <td className="py-2 pr-4">
+                  {skinCareEntries.length === 0 ? (
+                    <span className="text-gray-500">—</span>
+                  ) : (
+                    <ul className="flex flex-col gap-0.5">
+                      {skinCareEntries.map((entry) => (
+                        <li key={entry.id}>
+                          {entry.careType.name}
+                          {entry.notes ? `: ${entry.notes}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </td>
+                <td className="py-2 pr-4">
                   {regimens.length === 0 ? (
                     <span className="text-gray-500">—</span>
                   ) : (
@@ -161,7 +212,7 @@ export default async function FeedBoardPage() {
                     </ul>
                   )}
                 </td>
-                <td className="py-2">
+                <td className="py-2 pr-4">
                   {instructionBaselines.length === 0 ? (
                     <span className="text-gray-500">—</span>
                   ) : (
@@ -170,6 +221,25 @@ export default async function FeedBoardPage() {
                         <li key={baseline.id}>{baseline.overrides[0]?.notes ?? baseline.notes}</li>
                       ))}
                     </ul>
+                  )}
+                </td>
+                <td className="py-2">
+                  {/* Standing guidance (Animal.handlingNotes) plus any short-lived, date-specific
+                      ATTN flag logged for today (CareEntry, CareType "ATTN / Handling Flag") —
+                      two distinct sources sharing one column since together they're "what to
+                      know about handling this horse today," per V3.md Session 6's resolution of
+                      the ATTN-flags-don't-fit-handlingNotes gap. */}
+                  {!animal.handlingNotes && attnFlags.length === 0 ? (
+                    <span className="text-gray-500">—</span>
+                  ) : (
+                    <div className="flex flex-col gap-0.5">
+                      {animal.handlingNotes && <span>{animal.handlingNotes}</span>}
+                      {attnFlags.map((entry) => (
+                        <span key={entry.id} className="text-red-700">
+                          ATTN: {entry.notes}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </td>
               </tr>

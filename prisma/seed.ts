@@ -82,7 +82,21 @@ async function main() {
       { name: "Castration", category: "MEDICAL" },
       { name: "Fly Mask / Spray", category: "SEASONAL" },
       { name: "Blanket Change", category: "SEASONAL" },
-      { name: "Grooming", category: "GROOMING" }
+      { name: "Grooming", category: "GROOMING" },
+      // V3.md Session 6: real board "Skin Care" items beyond the existing "Fly Mask / Spray" —
+      // fits CareType/CareEntry as-is (CONTEXT.md §12), no schema change. Leg Wrap categorized
+      // GROOMING (a protective wrap applied during routine handling) rather than SEASONAL, to
+      // mirror the existing "Grooming"/"Fly Mask / Spray" category split.
+      { name: "Topical Spray", category: "SEASONAL" },
+      { name: "Leg Wrap", category: "GROOMING" },
+      // V3.md Session 6: the real content gap this session closes — short-lived, date-specific
+      // "ATTN" handling flags (e.g. "cold hose if breaths per min exceed 20") seen on the real
+      // board don't fit Animal.handlingNotes (a single evergreen field for standing guidance).
+      // Modeled as a dedicated CareType instead (confirmed with James: category MEDICAL, not
+      // OTHER — these are health-driven watch instructions, not routine seasonal/grooming care)
+      // so they're already dated, free-text, and categorized via the existing CareEntry log
+      // form with no code change — see src/app/feed-board/page.tsx's Handling Notes column.
+      { name: "ATTN / Handling Flag", category: "MEDICAL" }
     ],
     skipDuplicates: true
   })
