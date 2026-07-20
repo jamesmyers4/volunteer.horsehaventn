@@ -20,15 +20,19 @@ export async function createLocation(formData: FormData) {
   const stallNumberRaw = formData.get("stallNumber")
   const turnoutOrderRaw = formData.get("turnoutOrder")
   const bringInOrderRaw = formData.get("bringInOrder")
+  // V3.md Session 2: BARN_STALL-specific, same per-type field pattern as barnNumber/stallNumber.
+  const requiresStripCleanRaw = formData.get("requiresStripClean")
 
   if (type === "FIELD") {
     if (barnNumberRaw || stallNumberRaw) throw new Error("A FIELD location cannot have a barn/stall number")
+    if (requiresStripCleanRaw) throw new Error("A FIELD location cannot require strip cleaning")
   } else {
     if (fieldCodeRaw) throw new Error(`A ${type} location cannot have a field code`)
     if (turnoutOrderRaw || bringInOrderRaw) throw new Error(`A ${type} location cannot have a turnout/bring-in order`)
     if (type !== "BARN_STALL" && (barnNumberRaw || stallNumberRaw)) {
       throw new Error(`A ${type} location cannot have a barn/stall number`)
     }
+    if (type !== "BARN_STALL" && requiresStripCleanRaw) throw new Error(`A ${type} location cannot require strip cleaning`)
   }
 
   await prisma.location.create({
@@ -39,7 +43,8 @@ export async function createLocation(formData: FormData) {
       barnNumber: type === "BARN_STALL" && barnNumberRaw ? Number(barnNumberRaw) : undefined,
       stallNumber: type === "BARN_STALL" && stallNumberRaw ? Number(stallNumberRaw) : undefined,
       turnoutOrder: type === "FIELD" && turnoutOrderRaw ? Number(turnoutOrderRaw) : undefined,
-      bringInOrder: type === "FIELD" && bringInOrderRaw ? Number(bringInOrderRaw) : undefined
+      bringInOrder: type === "FIELD" && bringInOrderRaw ? Number(bringInOrderRaw) : undefined,
+      requiresStripClean: type === "BARN_STALL" && requiresStripCleanRaw === "on"
     }
   })
 
@@ -70,15 +75,18 @@ export async function updateLocation(locationId: string, formData: FormData) {
   const stallNumberRaw = formData.get("stallNumber")
   const turnoutOrderRaw = formData.get("turnoutOrder")
   const bringInOrderRaw = formData.get("bringInOrder")
+  const requiresStripCleanRaw = formData.get("requiresStripClean")
 
   if (type === "FIELD") {
     if (barnNumberRaw || stallNumberRaw) throw new Error("A FIELD location cannot have a barn/stall number")
+    if (requiresStripCleanRaw) throw new Error("A FIELD location cannot require strip cleaning")
   } else {
     if (fieldCodeRaw) throw new Error(`A ${type} location cannot have a field code`)
     if (turnoutOrderRaw || bringInOrderRaw) throw new Error(`A ${type} location cannot have a turnout/bring-in order`)
     if (type !== "BARN_STALL" && (barnNumberRaw || stallNumberRaw)) {
       throw new Error(`A ${type} location cannot have a barn/stall number`)
     }
+    if (type !== "BARN_STALL" && requiresStripCleanRaw) throw new Error(`A ${type} location cannot require strip cleaning`)
   }
 
   await prisma.location.update({
@@ -90,7 +98,8 @@ export async function updateLocation(locationId: string, formData: FormData) {
       barnNumber: type === "BARN_STALL" && barnNumberRaw ? Number(barnNumberRaw) : null,
       stallNumber: type === "BARN_STALL" && stallNumberRaw ? Number(stallNumberRaw) : null,
       turnoutOrder: type === "FIELD" && turnoutOrderRaw ? Number(turnoutOrderRaw) : null,
-      bringInOrder: type === "FIELD" && bringInOrderRaw ? Number(bringInOrderRaw) : null
+      bringInOrder: type === "FIELD" && bringInOrderRaw ? Number(bringInOrderRaw) : null,
+      requiresStripClean: type === "BARN_STALL" && requiresStripCleanRaw === "on"
     }
   })
 

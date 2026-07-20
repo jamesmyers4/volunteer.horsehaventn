@@ -143,6 +143,23 @@ async function main() {
     })
   }
 
+  // V3.md Session 2: fixed three recurring facility-upkeep categories confirmed from the real
+  // Horse Care Board. category is @unique (same capped-table pattern as ShiftTemplate.shiftType),
+  // so this is an upsert keyed on category, not name — name stays the admin-editable display
+  // label, same split ShiftTemplate has between its fixed shiftType key and its editable name.
+  const facilityTaskTypes = [
+    { category: "TROUGH_CLEAN" as const, name: "Trough Clean" },
+    { category: "STALL_CLEAN" as const, name: "Stall Clean" },
+    { category: "STALL_STRIP" as const, name: "Stall Strip" }
+  ]
+  for (const taskType of facilityTaskTypes) {
+    await prisma.facilityTaskType.upsert({
+      where: { category: taskType.category },
+      update: {},
+      create: taskType
+    })
+  }
+
   // Singleton FarmSettings row — findFirst-or-create, same pattern getFarmSettings() uses
   // at read time (src/lib/farmSettings.ts). Seeded here too so a fresh DB always has one.
   const existingFarmSettings = await prisma.farmSettings.findFirst()

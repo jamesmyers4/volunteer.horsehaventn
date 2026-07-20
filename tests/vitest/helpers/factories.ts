@@ -63,6 +63,8 @@ export const getTierThreshold = (tier: "GREEN" | "ORANGE" | "YELLOW" | "BLUE" = 
 export const getCredentialType = (name = "Volunteer Manual Acknowledgment") => prisma.credentialType.findFirstOrThrow({ where: { name } })
 export const getVolunteerTag = (name = "Go Team") => prisma.volunteerTag.findFirstOrThrow({ where: { name } })
 export const getEventCategory = (name = "Meetup") => prisma.eventCategory.findFirstOrThrow({ where: { name } })
+export const getFacilityTaskType = (category: "TROUGH_CLEAN" | "STALL_CLEAN" | "STALL_STRIP" = "TROUGH_CLEAN") =>
+  prisma.facilityTaskType.findFirstOrThrow({ where: { category } })
 
 export async function createEvent(
   createdById: string,

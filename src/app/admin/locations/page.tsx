@@ -95,6 +95,10 @@ export default async function AdminLocationsPage() {
                         placeholder="stall #"
                         className="w-20 rounded border px-2 py-1 text-xs"
                       />
+                      <label className="flex items-center gap-1 text-xs">
+                        <input type="checkbox" name="requiresStripClean" defaultChecked={location.requiresStripClean} />
+                        strip clean
+                      </label>
                     </>
                   )}
                   <label className="flex items-center gap-1 text-xs">

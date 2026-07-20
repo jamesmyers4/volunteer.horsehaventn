@@ -86,6 +86,10 @@ export default async function LocationsPage() {
           <input type="text" name="fieldCode" placeholder="field code (FIELD only, e.g. L7)" className="rounded border px-2 py-1" />
           <input type="number" name="barnNumber" placeholder="barn number (BARN_STALL only)" className="rounded border px-2 py-1" />
           <input type="number" name="stallNumber" placeholder="stall number (BARN_STALL only)" className="rounded border px-2 py-1" />
+          <label className="flex items-center gap-2">
+            <input type="checkbox" name="requiresStripClean" />
+            Requires strip clean (BARN_STALL only)
+          </label>
           <button type="submit" className="w-fit rounded bg-black px-4 py-2 text-xs text-white">
             Add location
           </button>

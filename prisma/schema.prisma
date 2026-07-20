@@ -147,6 +147,19 @@ enum FarmSeason {
   WINTER
 }
 
+// V3.md Session 2: the three recurring facility-upkeep task categories confirmed from the
+// real Horse Care Board (trough cleaning, regular stall cleaning, full strip-out cleaning).
+// Fixed by real-world barn operations, not something staff add to casually — same "won't
+// casually grow" criteria CLAUDE.md reserves for a hard enum (Role, ShiftType, etc.), paired
+// here with FacilityTaskType.category @unique the same way ShiftTemplate.shiftType @unique
+// caps that table at exactly two rows. This drives the location-type/strip-clean pairing
+// validation in src/lib/facilityTasks.ts app-side, not a DB constraint.
+enum FacilityTaskCategory {
+  TROUGH_CLEAN
+  STALL_CLEAN
+  STALL_STRIP
+}
+
 model Volunteer {
   id                    String                     @id @default(cuid())
   clerkId               String?                    @unique
@@ -197,6 +210,7 @@ model Volunteer {
   eventWatching         EventWatcher[]
   eventSignups          EventSignup[]
   recordedRelationships AnimalRelationship[]
+  completedFacilityTasks FacilityTaskCompletion[]
 
   @@index([clerkId])
   @@index([role])
@@ -727,6 +741,11 @@ model Location {
   fieldCode      String?                    @unique
   barnNumber     Int?
   stallNumber    Int?
+  // V3.md Session 2: BARN_STALL-specific (true for Remus's and Rowan's stalls today per the
+  // real board), nullable-in-spirit/unused for other types — same per-type-field pattern
+  // already used for barnNumber/stallNumber. Drives whether a STALL_STRIP task can target
+  // this location (src/lib/facilityTasks.ts).
+  requiresStripClean Boolean                @default(false)
   boundaryPoints Json?
   turnoutOrder   Int?
   bringInOrder   Int?
@@ -734,8 +753,79 @@ model Location {
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
   assignments    AnimalLocationAssignment[]
+  recurringTaskTemplates  RecurringTaskTemplate[]
+  facilityTaskCompletions FacilityTaskCompletion[]
 
   @@index([type])
+}
+
+// V3.md Session 2: admin-editable lookup, same category as WorkType/FeedType/CareType — not
+// ChangeLog-tracked. category is a hard enum (see FacilityTaskCategory above) rather than a
+// free-text name match, so the location-type/strip pairing validation is data-driven instead
+// of matching against an admin-editable display string. Full CRUD deferred to the Admin
+// Console (V3.md Session 7), same precedent as WorkType/FeedType/CareType having no in-app
+// write path yet — this session only seeds the fixed three rows.
+model FacilityTaskType {
+  id          String                   @id @default(cuid())
+  name        String                   @unique
+  category    FacilityTaskCategory     @unique
+  active      Boolean                  @default(true)
+  createdAt   DateTime                 @default(now())
+  templates   RecurringTaskTemplate[]
+  completions FacilityTaskCompletion[]
+}
+
+// V3.md Session 2: what the admin's monthly calendar (full calendar UI deferred to Session 7;
+// this session builds the underlying create/edit actions plus a plain list, same "basic page
+// now, polished Admin Console screen later" split as Location/IntakeGroup) manages — a
+// weekly-recurring slot, not a per-occurrence row. Expected tasks for a given day are derived
+// at render time by matching dayOfWeek+shiftType (src/lib/facilityTasks.ts), never
+// pre-generated. Not ChangeLog-tracked: admin-config/lookup-adjacent data, same category as
+// ShiftTemplate/TierThreshold. No hard deletes — deactivate via isActive.
+model RecurringTaskTemplate {
+  id               String    @id @default(cuid())
+  taskTypeId       String
+  targetLocationId String
+  dayOfWeek        Int
+  shiftType        ShiftType
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  taskType         FacilityTaskType         @relation(fields: [taskTypeId], references: [id])
+  targetLocation   Location                 @relation(fields: [targetLocationId], references: [id])
+  completions      FacilityTaskCompletion[]
+
+  @@index([dayOfWeek, shiftType])
+  @@index([taskTypeId])
+  @@index([targetLocationId])
+}
+
+// V3.md Session 2: a completion row only gets created when someone actually checks a task
+// off — the expected list itself is always derived from RecurringTaskTemplate, never
+// pre-generated. taskTypeId/targetLocationId are captured directly on the row (not solely
+// derivable through templateId) so an ad hoc, non-recurring completion (templateId null,
+// the "quick-add" path) has everything it needs on its own. completedById follows the
+// AnimalLocationAssignment/EventSignup FK convention; not ChangeLog-tracked for the same
+// reason those two models aren't — who/when is already captured directly on the row, and
+// this doesn't carry Animal/Volunteer's legal-defensibility weight (CONTEXT.md §4).
+model FacilityTaskCompletion {
+  id               String    @id @default(cuid())
+  taskTypeId       String
+  targetLocationId String
+  date             DateTime
+  shiftType        ShiftType
+  completedById    String
+  notes            String?
+  templateId       String?
+  createdAt        DateTime  @default(now())
+  taskType         FacilityTaskType       @relation(fields: [taskTypeId], references: [id])
+  targetLocation   Location               @relation(fields: [targetLocationId], references: [id])
+  completedBy      Volunteer              @relation(fields: [completedById], references: [id])
+  template         RecurringTaskTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([date, shiftType])
+  @@index([templateId])
+  @@index([targetLocationId])
 }
 
 // Append-only (V2.md Session 1): a move is always a new row, never an update to an old

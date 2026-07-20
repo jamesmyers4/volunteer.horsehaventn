@@ -26,7 +26,8 @@ const LOOKUP_TABLES = new Set([
   "VolunteerTag",
   "EventCategory",
   "ShiftTemplate",
-  "FarmSettings"
+  "FarmSettings",
+  "FacilityTaskType"
 ])
 
 export { prisma }
