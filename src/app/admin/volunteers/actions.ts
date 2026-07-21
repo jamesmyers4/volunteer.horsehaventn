@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { requireRole } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 
-type RoleInput = "ADMIN" | "SHIFT_LEAD" | "VOLUNTEER" | "GUEST"
+type RoleInput = "ADMIN" | "SHIFT_LEAD" | "VOLUNTEER" | "GUEST" | "KIOSK"
 
 // Volunteer.role has always been Admin-only per CLAUDE.md's Permissions Quick Reference, but
 // no dedicated action existed to change it before this session (roles were only ever set at

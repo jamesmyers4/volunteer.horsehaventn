@@ -1,7 +1,7 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { requireVolunteer } from "@/lib/auth"
+import { requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 type HandlingColorInput = "GREEN" | "ORANGE" | "YELLOW" | "BLUE" | "RED"
@@ -12,7 +12,7 @@ type HandlingColorInput = "GREEN" | "ORANGE" | "YELLOW" | "BLUE" | "RED"
 // EventCategory itself has no CRUD here — same deferral as Location's full CRUD (CLAUDE.md),
 // left for Session 7's Admin Console; the seeded six categories cover Session 4's scope.
 async function requireCanScheduleEvents() {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
   if (volunteer.role !== "ADMIN" && !volunteer.canScheduleEvents) throw new Error("Not authorized")
   return volunteer
 }
@@ -59,7 +59,7 @@ export async function createEvent(formData: FormData) {
 // Editable by the event's own creator or an ADMIN — canScheduleEvents alone doesn't let one
 // organizer edit another's event.
 export async function updateEvent(eventId: string, formData: FormData) {
-  const actor = await requireVolunteer()
+  const actor = await requireNonKioskVolunteer()
   const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId } })
   if (actor.role !== "ADMIN" && actor.id !== event.createdById) throw new Error("Not authorized")
 
@@ -96,7 +96,7 @@ export async function updateEvent(eventId: string, formData: FormData) {
 }
 
 export async function cancelEvent(eventId: string) {
-  const actor = await requireVolunteer()
+  const actor = await requireNonKioskVolunteer()
   const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId } })
   if (actor.role !== "ADMIN" && actor.id !== event.createdById) throw new Error("Not authorized")
   if (event.canceledAt) throw new Error("Event already canceled")

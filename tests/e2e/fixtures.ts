@@ -8,6 +8,7 @@ type Fixtures = {
   adminPage: Page
   shiftLeadPage: Page
   volunteerPage: Page
+  kioskPage: Page
   /**
    * Opens a fresh, independently-signed-in page for tests that need two roles active at
    * once (e.g. an Admin sets something up, then a Shift Lead acts on it) — a single Page
@@ -49,6 +50,9 @@ export const test = base.extend<Fixtures>({
   },
   volunteerPage: async ({ page }, use) => {
     await use(await signIn(page, TEST_USERS.volunteer.email))
+  },
+  kioskPage: async ({ page }, use) => {
+    await use(await signIn(page, TEST_USERS.kiosk.email))
   },
   openAs: async ({ browser }, use) => {
     const contexts: BrowserContext[] = []

@@ -201,6 +201,21 @@ describe("getExpectedFacilityTasks — weekday/shift expansion", () => {
 })
 
 describe("logFacilityTaskCompletion — ad hoc quick-add", () => {
+  // V4.md Session 1: KIOSK is a shared, read-only display account — this action used to gate
+  // only on requireVolunteer() ("any signed-in person"), the same self-service gap several
+  // other actions had.
+  it("rejects a KIOSK-role account and writes nothing", async () => {
+    const taskType = await getFacilityTaskType("TROUGH_CLEAN")
+    const location = await getLocation("RP2")
+    await createVolunteer({ clerkId: "clerk_ftc_kiosk", role: "KIOSK" })
+    mockSignedInAs("clerk_ftc_kiosk")
+
+    await expect(
+      logFacilityTaskCompletion(formData({ taskTypeId: taskType.id, targetLocationId: location.id, date: "2026-07-20", shiftType: "AM" }))
+    ).rejects.toThrow("Not authorized")
+    expect(await prisma.facilityTaskCompletion.count({ where: { targetLocationId: location.id } })).toBe(0)
+  })
+
   it("any signed-in Volunteer can log an ad hoc completion with no templateId", async () => {
     const taskType = await getFacilityTaskType("TROUGH_CLEAN")
     const location = await getLocation("RP1")

@@ -2,12 +2,14 @@ import Link from "next/link"
 import { requireVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { createFeedingOverride } from "@/app/animals/[id]/feeding-actions"
+import { resolveDisplayedFeedBoardShift, type FeedBoardShift } from "@/lib/feedBoard"
+import AutoRefresh from "@/app/AutoRefresh"
 
-async function loadFeedingBaselines(animalIds: string[], today: Date, tomorrow: Date) {
+async function loadFeedingBaselines(animalIds: string[], shift: FeedBoardShift, today: Date, tomorrow: Date) {
   return prisma.feedingBaseline.findMany({
-    where: { animalId: { in: animalIds } },
+    where: { animalId: { in: animalIds }, shift },
     include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } } } },
-    orderBy: [{ shift: "asc" }, { feedType: { name: "asc" } }]
+    orderBy: [{ feedType: { name: "asc" } }]
   })
 }
 
@@ -30,9 +32,20 @@ const ATTN_CARE_TYPE_NAME = "ATTN / Handling Flag"
 // and locations/page.tsx (V2.md's "read-only for everyone" is read as "every role", not
 // "unauthenticated" — unlike /kiosk, nothing here says "no login required on the shared
 // device," so this stays behind requireVolunteer() like every other board/report page).
-export default async function FeedBoardPage() {
+export default async function FeedBoardPage({ searchParams }: { searchParams: Promise<{ shift?: string }> }) {
   const volunteer = await requireVolunteer()
   const canEdit = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
+
+  // V4.md Session 2: audit finding — the Feed Board previously queried every FeedingBaseline
+  // regardless of shift (ordered AM-then-PM, both merged into the same cell), so a horse with
+  // both an AM and a PM row for the same feed item showed both lines at once with no way to
+  // tell which applied right now. FeedingBaseline.shift already existed and was simply unused
+  // for filtering. Fixed here: filter to one shift, defaulting to the automatic noon-boundary
+  // switch with a manual ?shift= override any viewer (including KIOSK, a display toggle not a
+  // write) can use to check the other shift without waiting.
+  const { shift: shiftParam } = await searchParams
+  const shift = resolveDisplayedFeedBoardShift(shiftParam, new Date())
+  const isManualOverride = shiftParam === "AM" || shiftParam === "PM"
 
   const animals = await prisma.animal.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } })
   const animalIds = animals.map((a) => a.id)
@@ -51,7 +64,7 @@ export default async function FeedBoardPage() {
   })
   const headshotByAnimal = new Map(headshots.map((p) => [p.animalId, p]))
 
-  const feedingBaselines = await loadFeedingBaselines(animalIds, today, tomorrow)
+  const feedingBaselines = await loadFeedingBaselines(animalIds, shift, today, tomorrow)
   const feedingByAnimal = new Map<string, typeof feedingBaselines>()
   for (const baseline of feedingBaselines) {
     const list = feedingByAnimal.get(baseline.animalId) ?? []
@@ -112,6 +125,24 @@ export default async function FeedBoardPage() {
           One row per active horse — feed, hay, skin care, meds, special instructions, and handling notes at a glance. Read-only here;
           Admin/Shift-Lead can adjust today&apos;s feed/hay amount and special instructions inline on a desktop screen.
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+          <div className="flex gap-3">
+            <Link href="/feed-board?shift=AM" className={shift === "AM" ? "font-semibold underline" : "underline text-gray-500"}>
+              AM
+            </Link>
+            <Link href="/feed-board?shift=PM" className={shift === "PM" ? "font-semibold underline" : "underline text-gray-500"}>
+              PM
+            </Link>
+            {isManualOverride && (
+              <Link href="/feed-board" className="underline text-gray-500">
+                Auto
+              </Link>
+            )}
+          </div>
+          <Link href={`/turnout-board?period=DAY&feedShift=${shift}`} className="font-medium underline">
+            View Turnout Board →
+          </Link>
+        </div>
       </div>
       <table className="w-full text-left text-sm">
         <thead>
@@ -155,7 +186,10 @@ export default async function FeedBoardPage() {
                       </Link>
                       {dayLocation && (
                         <div>
-                          <Link href={`/turnout-board?period=DAY#location-${dayLocation.locationId}`} className="text-xs text-gray-500 underline">
+                          <Link
+                            href={`/turnout-board?period=DAY&feedShift=${shift}#location-${dayLocation.locationId}`}
+                            className="text-xs text-gray-500 underline"
+                          >
                             {dayLocation.location.fieldCode ?? dayLocation.location.name}
                           </Link>
                         </div>
@@ -169,7 +203,7 @@ export default async function FeedBoardPage() {
                   ) : (
                     <ul className="flex flex-col gap-2">
                       {mainFeeds.map((baseline) => (
-                        <FeedCell key={baseline.id} baseline={baseline} animalId={animal.id} canEdit={canEdit} />
+                        <FeedCell key={baseline.id} baseline={baseline} animalId={animal.id} canEdit={canEdit} shift={shift} />
                       ))}
                     </ul>
                   )}
@@ -180,7 +214,7 @@ export default async function FeedBoardPage() {
                   ) : (
                     <ul className="flex flex-col gap-2">
                       {hayFeeds.map((baseline) => (
-                        <FeedCell key={baseline.id} baseline={baseline} animalId={animal.id} canEdit={canEdit} />
+                        <FeedCell key={baseline.id} baseline={baseline} animalId={animal.id} canEdit={canEdit} shift={shift} />
                       ))}
                     </ul>
                   )}
@@ -248,6 +282,7 @@ export default async function FeedBoardPage() {
         </tbody>
       </table>
       {animals.length === 0 && <p className="text-sm text-gray-500">No active horses to show.</p>}
+      <AutoRefresh />
     </main>
   )
 }
@@ -257,7 +292,17 @@ export default async function FeedBoardPage() {
 // mobile viewport, matching V2.md's "breakpoint/role condition on the same view" instruction —
 // this is a CSS-only condition, no client JS, consistent with this codebase's zero-client-
 // component convention everywhere except the headshot crop tool.
-function FeedCell({ baseline, animalId, canEdit }: { baseline: FeedingBaselineRow; animalId: string; canEdit: boolean }) {
+function FeedCell({
+  baseline,
+  animalId,
+  canEdit,
+  shift
+}: {
+  baseline: FeedingBaselineRow
+  animalId: string
+  canEdit: boolean
+  shift: FeedBoardShift
+}) {
   const override = baseline.overrides[0]
   const unit = baseline.feedType.defaultUnit.toLowerCase()
   const createOverrideForBaseline = createFeedingOverride.bind(null, baseline.id, animalId)
@@ -281,7 +326,9 @@ function FeedCell({ baseline, animalId, canEdit }: { baseline: FeedingBaselineRo
           write on top of it — the form only appears before today's override exists. */}
       {canEdit && !override && (
         <form action={createOverrideForBaseline} className="hidden lg:flex lg:flex-col lg:gap-1 lg:pt-1">
-          <input type="hidden" name="redirectTo" value="/feed-board" />
+          {/* Preserves the manual shift override across the redirect, same "state intact"
+              treatment V4.md Session 2 asks for on the Feed Board <-> Turnout Board round trip. */}
+          <input type="hidden" name="redirectTo" value={`/feed-board?shift=${shift}`} />
           <input type="number" step="0.25" name="amount" placeholder={`amount (${unit})`} className="w-32 rounded border px-1 py-0.5 text-xs" />
           <input
             type="text"

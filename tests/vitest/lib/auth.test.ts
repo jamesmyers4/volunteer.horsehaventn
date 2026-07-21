@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { getCurrentVolunteer, requireVolunteer, requireRole } from "@/lib/auth"
+import { getCurrentVolunteer, requireVolunteer, requireRole, requireNonKioskVolunteer, landingRouteForRole } from "@/lib/auth"
 import { mockSignedInAs, mockSignedOut } from "../helpers/auth-mock"
 import { createVolunteer } from "../helpers/factories"
 
@@ -63,5 +63,52 @@ describe("requireRole", () => {
     const volunteer = await createVolunteer({ clerkId: "clerk_lead", role: "SHIFT_LEAD" })
     mockSignedInAs("clerk_lead")
     await expect(requireRole(["ADMIN", "SHIFT_LEAD"])).resolves.toMatchObject({ id: volunteer.id })
+  })
+
+  // V4.md Session 1: requireRole is an allowlist (`allowed.includes(role)`), so a brand-new
+  // role like KIOSK is safe-by-default against it without any code change — confirming that
+  // here, including against a deliberately broad list, is the point of this test.
+  it("rejects a KIOSK-role account even against every other real role's allowlist", async () => {
+    await createVolunteer({ clerkId: "clerk_kiosk_rr", role: "KIOSK" })
+    mockSignedInAs("clerk_kiosk_rr")
+    await expect(requireRole(["ADMIN", "SHIFT_LEAD", "VOLUNTEER", "GUEST"])).rejects.toThrow("Not authorized")
+  })
+})
+
+describe("requireNonKioskVolunteer", () => {
+  it("throws Not authenticated when there's no session at all", async () => {
+    mockSignedOut()
+    await expect(requireNonKioskVolunteer()).rejects.toThrow("Not authenticated")
+  })
+
+  it("rejects a KIOSK-role account", async () => {
+    await createVolunteer({ clerkId: "clerk_kiosk_rnkv", role: "KIOSK" })
+    mockSignedInAs("clerk_kiosk_rnkv")
+    await expect(requireNonKioskVolunteer()).rejects.toThrow("Not authorized")
+  })
+
+  it.each(["ADMIN", "SHIFT_LEAD", "VOLUNTEER", "GUEST"] as const)("allows a %s account through", async (role) => {
+    const volunteer = await createVolunteer({ clerkId: `clerk_nonkiosk_${role}`, role })
+    mockSignedInAs(`clerk_nonkiosk_${role}`)
+    await expect(requireNonKioskVolunteer()).resolves.toMatchObject({ id: volunteer.id })
+  })
+})
+
+describe("landingRouteForRole", () => {
+  it("sends KIOSK to the Feed Board", () => {
+    expect(landingRouteForRole("KIOSK")).toBe("/feed-board")
+  })
+
+  it("sends VOLUNTEER and SHIFT_LEAD to check-in", () => {
+    expect(landingRouteForRole("VOLUNTEER")).toBe("/checkin")
+    expect(landingRouteForRole("SHIFT_LEAD")).toBe("/checkin")
+  })
+
+  it("sends ADMIN to the admin console", () => {
+    expect(landingRouteForRole("ADMIN")).toBe("/admin")
+  })
+
+  it("has no defined landing route for GUEST — V4.md's table doesn't cover it", () => {
+    expect(landingRouteForRole("GUEST")).toBeNull()
   })
 })

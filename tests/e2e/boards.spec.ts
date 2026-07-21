@@ -37,7 +37,11 @@ test("the Feed Board shows current feed/hay/meds/instructions, with today's over
     data: { animalId: animal.id, drugName: "Bute", dose: "1g", frequency: "daily", startDate: new Date("2026-01-01") }
   })
 
-  await volunteerPage.goto("/feed-board")
+  // Pinned to ?shift=AM: these baselines are AM-only, and the board now filters by the
+  // currently-displayed shift (V4.md Session 2) — without pinning, this test would flip
+  // between pass/fail depending on what time of day it happens to run, the exact flakiness
+  // shape shift-roster.spec.ts already hit once (see HANDOFF.md).
+  await volunteerPage.goto("/feed-board?shift=AM")
 
   const row = volunteerPage.locator("tr", { hasText: "Juno" })
   await expect(row.getByText("0.5 scoop")).toBeVisible()
@@ -141,7 +145,10 @@ test("the Feed Board links each row to that animal's current location on the Tur
   const row = volunteerPage.locator("tr", { hasText: "Piper" })
   await row.getByRole("link", { name: "L2" }).click()
 
-  await expect(volunteerPage).toHaveURL(/\/turnout-board\?period=DAY#location-/)
+  // V4.md Session 2 threaded a &feedShift= param onto this link (so the eventual "Back to Feed
+  // Board" link can restore the AM/PM state) — match loosely rather than requiring the exact
+  // adjacency of ?period=DAY and #location- the way the pre-Session-2 regex did.
+  await expect(volunteerPage).toHaveURL(/\/turnout-board\?period=DAY.*#location-/)
   await expect(volunteerPage.locator("section", { hasText: "L2" }).getByRole("link", { name: "Piper" })).toBeVisible()
 })
 
@@ -209,15 +216,19 @@ test("edit affordances on both boards appear only for Admin/Shift-Lead at a desk
     data: { animalId: animal.id, locationId: location.id, period: "DAY", effectiveAt: new Date("2026-07-01"), recordedById: admin.id }
   })
 
+  // Pinned to ?shift=AM throughout: Reed's baseline is AM-only, and the board now filters by
+  // the currently-displayed shift (V4.md Session 2) — without pinning, the Admin assertions
+  // below (which expect a form to exist at all) would flake depending on time of day.
+
   // Plain Volunteer: no edit forms on either board, at any viewport.
-  await volunteerPage.goto("/feed-board")
+  await volunteerPage.goto("/feed-board?shift=AM")
   await expect(volunteerPage.locator("form")).toHaveCount(0)
   await volunteerPage.goto("/turnout-board?period=DAY")
   await expect(volunteerPage.locator("form")).toHaveCount(0)
 
   // Admin at a desktop viewport (default Desktop Chrome project, 1280x720 — above the lg
   // breakpoint): edit forms are present and visible.
-  await adminPage.goto("/feed-board")
+  await adminPage.goto("/feed-board?shift=AM")
   await expect(adminPage.locator("form").first()).toBeVisible()
   await adminPage.goto("/turnout-board?period=DAY")
   await expect(adminPage.locator("form").first()).toBeVisible()
@@ -225,7 +236,7 @@ test("edit affordances on both boards appear only for Admin/Shift-Lead at a desk
   // Same Admin, mobile-width viewport: the forms still exist in the DOM (server-rendered
   // either way) but are hidden by the `hidden lg:*` breakpoint classes, not shown.
   await adminPage.setViewportSize({ width: 500, height: 800 })
-  await adminPage.goto("/feed-board")
+  await adminPage.goto("/feed-board?shift=AM")
   await expect(adminPage.locator("form").first()).not.toBeVisible()
   await adminPage.goto("/turnout-board?period=DAY")
   await expect(adminPage.locator("form").first()).not.toBeVisible()

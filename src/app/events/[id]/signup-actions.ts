@@ -1,7 +1,7 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { requireVolunteer } from "@/lib/auth"
+import { requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { checkEventEligibility } from "@/lib/events"
 import { sendEmail } from "@/lib/email"
@@ -39,7 +39,7 @@ async function notifyOrganizers(event: EventWithNotifyTargets, message: string) 
 // gated events from ineligible volunteers — V2.md is explicit that a direct signup attempt
 // must be rejected server-side too, not just hidden from listings.
 export async function signupForEvent(eventId: string) {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
   const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId } })
   if (event.canceledAt) throw new Error("This event has been canceled")
 
@@ -76,7 +76,7 @@ export async function signupForEvent(eventId: string) {
 // someone-else's-behalf path yet, matching the deliberate self-attestation scope cuts already
 // made elsewhere in this project (CredentialRecord, training completion).
 export async function cancelSignup(eventId: string) {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
   const signup = await prisma.eventSignup.findUniqueOrThrow({ where: { eventId_volunteerId: { eventId, volunteerId: volunteer.id } } })
   if (signup.status === "CANCELLED") throw new Error("Signup already canceled")
 

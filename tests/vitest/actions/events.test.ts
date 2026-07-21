@@ -38,6 +38,19 @@ describe("createEvent", () => {
     await expect(createEvent(formData({ ...baseEventFields(), categoryId: category.id }))).rejects.toThrow("Not authorized")
   })
 
+  // V4.md Session 1 defense-in-depth: even if a KIOSK account somehow had canScheduleEvents
+  // toggled on, it must still be rejected — requireCanScheduleEvents now calls
+  // requireNonKioskVolunteer() before checking the flag at all.
+  it("rejects a KIOSK-role account even with canScheduleEvents = true", async () => {
+    await prisma.volunteer.create({
+      data: { clerkId: "clerk_kiosk_ce", name: "Lobby TV", role: "KIOSK", status: "ACTIVE", tier: "GREEN", canScheduleEvents: true }
+    })
+    mockSignedInAs("clerk_kiosk_ce")
+    const category = await getEventCategory()
+
+    await expect(createEvent(formData({ ...baseEventFields(), categoryId: category.id }))).rejects.toThrow("Not authorized")
+  })
+
   it("succeeds for a volunteer with canScheduleEvents = true, even without ADMIN role", async () => {
     await prisma.volunteer.create({
       data: { clerkId: "clerk_sched_ce", name: "Scheduler", role: "VOLUNTEER", status: "ACTIVE", tier: "GREEN", canScheduleEvents: true }
@@ -99,6 +112,24 @@ describe("createEvent", () => {
 })
 
 describe("updateEvent / cancelEvent", () => {
+  // V4.md Session 1 defense-in-depth: updateEvent/cancelEvent now call
+  // requireNonKioskVolunteer() before the creator/ADMIN check even runs.
+  it("updateEvent rejects a KIOSK-role account, even for a garbage eventId", async () => {
+    await createVolunteer({ clerkId: "clerk_kiosk_ue", role: "KIOSK" })
+    mockSignedInAs("clerk_kiosk_ue")
+
+    await expect(updateEvent("nonexistent-id", formData(baseEventFields({ categoryId: "nonexistent-id" })))).rejects.toThrow(
+      "Not authorized"
+    )
+  })
+
+  it("cancelEvent rejects a KIOSK-role account, even for a garbage eventId", async () => {
+    await createVolunteer({ clerkId: "clerk_kiosk_cane", role: "KIOSK" })
+    mockSignedInAs("clerk_kiosk_cane")
+
+    await expect(cancelEvent("nonexistent-id")).rejects.toThrow("Not authorized")
+  })
+
   it("updateEvent is rejected for a volunteer who is neither the creator nor ADMIN", async () => {
     const admin = await createVolunteer({ clerkId: "clerk_admin_ue1", role: "ADMIN" })
     const event = await createEventRow(admin.id)
@@ -142,6 +173,28 @@ describe("updateEvent / cancelEvent", () => {
     expect(canceled.canceledAt).not.toBeNull()
 
     await expect(cancelEvent(event.id)).rejects.toThrow("already canceled")
+  })
+})
+
+describe("signupForEvent / cancelSignup — KIOSK", () => {
+  // V4.md Session 1: KIOSK is a shared, read-only display account — signupForEvent/
+  // cancelSignup used to gate only on requireVolunteer() ("any signed-in person"), the same
+  // self-service gap several other actions had.
+  it("rejects a KIOSK-role account signing up, and writes nothing", async () => {
+    const admin = await createVolunteer({ clerkId: "clerk_admin_kiosksignup", role: "ADMIN" })
+    const event = await createEventRow(admin.id)
+    await createVolunteer({ clerkId: "clerk_kiosk_signup", role: "KIOSK" })
+    mockSignedInAs("clerk_kiosk_signup")
+
+    await expect(signupForEvent(event.id)).rejects.toThrow("Not authorized")
+    expect(await prisma.eventSignup.count({ where: { eventId: event.id } })).toBe(0)
+  })
+
+  it("rejects a KIOSK-role account canceling, even for a garbage eventId — the role check runs first", async () => {
+    await createVolunteer({ clerkId: "clerk_kiosk_cancelsignup", role: "KIOSK" })
+    mockSignedInAs("clerk_kiosk_cancelsignup")
+
+    await expect(cancelSignup("nonexistent-id")).rejects.toThrow("Not authorized")
   })
 })
 

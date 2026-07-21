@@ -88,6 +88,19 @@ describe("ChecklistTemplate/ChecklistTemplateItem CRUD", () => {
 })
 
 describe("submitShiftReport", () => {
+  // V4.md Session 1 defense-in-depth: submitShiftReport now calls requireNonKioskVolunteer()
+  // before canSubmitShiftReport's own assignedLeadId/ADMIN check even runs, so a KIOSK account
+  // is rejected even in the (admin-misconfiguration) case where it was named assignedLeadId.
+  it("rejects a KIOSK-role account even when named as the occurrence's assignedLeadId", async () => {
+    const kiosk = await createVolunteer({ clerkId: "clerk_sr_kiosk", role: "KIOSK" })
+    mockSignedInAs("clerk_sr_kiosk")
+    await prisma.shift.create({ data: { date: REFERENCE_DATE, type: "AM", assignedLeadId: kiosk.id } })
+    const { template } = await createChecklistTemplateWithItem()
+
+    await expect(submitShiftReport(REFERENCE_DATE_STRING, "AM", formData({ templateId: template.id }))).rejects.toThrow("Not authorized")
+    expect(await prisma.shiftReport.count()).toBe(0)
+  })
+
   it("rejects a Volunteer who is neither the assigned lead nor global ADMIN", async () => {
     await createVolunteer({ clerkId: "clerk_sr_vol", role: "VOLUNTEER" })
     mockSignedInAs("clerk_sr_vol")

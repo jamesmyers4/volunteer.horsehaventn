@@ -7,11 +7,23 @@ datasource db {
   provider = "postgresql"
 }
 
+// V4.md Session 1: a shared, always-logged-in, genuinely read-only display account for the
+// two barn TV terminals (Feed Board / Turnout Board). A real Role rather than a boolean flag
+// like Volunteer.isKioskOnly — every write-capable permission check in this codebase is an
+// allowlist of specific roles (src/lib/auth.ts's requireRole), so a new role is safe-by-default
+// against every one of them without having to individually remember to exclude it, the same
+// "auto-capture, don't rely on remembering" reasoning ChangeLog itself is built on. Also
+// deliberately not folded into GUEST — GUEST is scoped to real time-boxed visitor access
+// (accessValidFrom/accessValidUntil), which a permanent shared system account doesn't need and
+// shouldn't be muddied with. Created the same way an ADMIN role is set: an existing admin
+// flips it manually on the volunteer management screen (src/app/admin/volunteers) — no new
+// signup flow, per CONTEXT.md §5's "no self-service promotion path, ever."
 enum Role {
   ADMIN
   SHIFT_LEAD
   VOLUNTEER
   GUEST
+  KIOSK
 }
 
 enum VolunteerStatus {

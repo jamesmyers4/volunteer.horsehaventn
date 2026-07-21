@@ -1,7 +1,7 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { requireRole, requireVolunteer } from "@/lib/auth"
+import { requireRole, requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 
 type HandlingColorInput = "GREEN" | "ORANGE" | "YELLOW" | "BLUE" | "RED"
@@ -57,7 +57,7 @@ export async function updateCredentialType(credentialTypeId: string, formData: F
 // admin-enters-on-someone-else's-behalf path yet — flagged as a deliberate MVP scope cut in
 // HANDOFF.md, not an oversight.
 export async function logTrainingCompletion(credentialTypeId: string) {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
   const credentialType = await prisma.credentialType.findUniqueOrThrow({ where: { id: credentialTypeId } })
 
   const completedDate = new Date()

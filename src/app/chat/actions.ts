@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
-import { requireVolunteer } from "@/lib/auth"
+import { requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import type { AlertSeverityValue } from "@/lib/alerts"
 
@@ -16,7 +16,7 @@ import type { AlertSeverityValue } from "@/lib/alerts"
 // list), same category as AnimalPhoto/FacilityTaskCompletion: who/when is already on the row
 // (senderId/createdAt) and this isn't the kind of correction-prone field ChangeLog exists for.
 export async function postChatMessage(formData: FormData) {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
 
   const channelId = String(formData.get("channelId"))
   const body = String(formData.get("body"))

@@ -45,6 +45,19 @@ describe("POST /api/animals/[id]/photos", () => {
     expect(sendMock).not.toHaveBeenCalled()
   })
 
+  // V4.md Session 1: KIOSK is a shared, read-only display account — this route used to gate
+  // only on requireVolunteer() ("any signed-in person"), the same self-service gap several
+  // other actions had.
+  it("rejects a KIOSK-role account and never touches R2", async () => {
+    await createVolunteer({ clerkId: "clerk_photo_kiosk", role: "KIOSK" })
+    mockSignedInAs("clerk_photo_kiosk")
+    const animal = await createAnimal()
+
+    await expect(POST(buildRequest({ file: imageFile(), type: "PROFILE" }), paramsFor(animal.id))).rejects.toThrow("Not authorized")
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(await prisma.animalPhoto.count()).toBe(0)
+  })
+
   it("rejects when no file is provided", async () => {
     await createVolunteer({ clerkId: "clerk_photo_1" })
     mockSignedInAs("clerk_photo_1")

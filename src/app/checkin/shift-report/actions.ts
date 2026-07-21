@@ -1,7 +1,7 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { requireVolunteer } from "@/lib/auth"
+import { requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 import { canSubmitShiftReport } from "@/lib/shiftReport"
 import type { ShiftTypeValue } from "@/lib/shifts"
@@ -16,7 +16,7 @@ import type { ShiftTypeValue } from "@/lib/shifts"
  * individual response (see the model's own schema comment).
  */
 export async function submitShiftReport(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireVolunteer()
+  const actor = await requireNonKioskVolunteer()
 
   const shift = await prisma.shift.upsert({
     where: { date_type: { date: new Date(date), type: shiftType } },

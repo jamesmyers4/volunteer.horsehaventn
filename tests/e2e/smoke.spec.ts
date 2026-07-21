@@ -7,11 +7,13 @@ test("homepage shows sign-in for a signed-out visitor", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Dashboard" })).not.toBeVisible()
 })
 
-test("signed-in volunteer sees the main nav", async ({ volunteerPage }) => {
-  await expect(volunteerPage.getByRole("link", { name: "Dashboard" })).toBeVisible()
-  await expect(volunteerPage.getByRole("link", { name: "Check in" })).toBeVisible()
-  await expect(volunteerPage.getByRole("link", { name: "Horses" })).toBeVisible()
-  await expect(volunteerPage.getByRole("link", { name: "Locations" })).toBeVisible()
+// V4.md Session 1: a signed-in Volunteer now lands on /checkin, not this flat link list — see
+// tests/e2e/kiosk-role-and-landing.spec.ts for the full per-role landing-route coverage. This
+// smoke test only confirms the homepage itself no longer stops a signed-in Volunteer.
+test("signed-in volunteer is redirected off the homepage to the check-in page", async ({ volunteerPage }) => {
+  await volunteerPage.goto("/")
+  await expect(volunteerPage).toHaveURL(/\/checkin$/)
+  await expect(volunteerPage.getByRole("link", { name: "Dashboard" })).not.toBeVisible()
 })
 
 // V2.md Session 7 replaced the diagnostic "am I admin" scaffold with the real Admin Console

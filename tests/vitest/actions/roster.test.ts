@@ -178,6 +178,22 @@ describe("assignShiftLead", () => {
 })
 
 describe("submitRosterAttendance", () => {
+  // V4.md Session 1 defense-in-depth: submitRosterAttendance now calls
+  // requireNonKioskVolunteer() before canManageShiftRoster's own assignedLeadId/role check even
+  // runs, so a KIOSK account is rejected even in the (admin-misconfiguration) case where it was
+  // named assignedLeadId.
+  it("rejects a KIOSK-role account even when named as the occurrence's assignedLeadId", async () => {
+    const rostered = await createVolunteer({ name: "Rostered Kiosk Test" })
+    const kiosk = await createVolunteer({ clerkId: "clerk_sra_kiosk", role: "KIOSK" })
+    await prisma.shift.create({ data: { date: REFERENCE_DATE, type: "AM", assignedLeadId: kiosk.id } })
+    mockSignedInAs("clerk_sra_kiosk")
+
+    await expect(
+      submitRosterAttendance(REFERENCE_DATE_STRING, "AM", formData({ presentVolunteerIds: rostered.id }))
+    ).rejects.toThrow("Not authorized")
+    expect(await prisma.checkIn.count({ where: { volunteerId: rostered.id } })).toBe(0)
+  })
+
   it("rejects a Volunteer who is neither the assigned lead nor globally ADMIN/SHIFT_LEAD", async () => {
     const rostered = await createVolunteer({ name: "Rostered Rae" })
     await createRegularAssignment(rostered.id)

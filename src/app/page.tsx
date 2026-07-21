@@ -1,13 +1,30 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { Show, SignInButton, UserButton } from "@clerk/nextjs"
+import { getCurrentVolunteer, landingRouteForRole } from "@/lib/auth"
 
-export default function Home() {
+// V4.md Session 1: role-based landing route after sign-in, replacing the flat link list below
+// that every role used to see regardless of what they actually do first. Checked here (not
+// just left to client-side Show) so a signed-in visitor never even renders the full nav —
+// this is also the only "stripped-down layout" KIOSK needs, since this flat list is the only
+// app-wide nav that exists anywhere in this codebase today.
+export default async function Home() {
+  const volunteer = await getCurrentVolunteer()
+  if (volunteer) {
+    const landingRoute = landingRouteForRole(volunteer.role)
+    if (landingRoute) redirect(landingRoute)
+  }
+
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
       <h1 className="text-2xl font-semibold">Horse Haven of Tennessee — Ops</h1>
       <p className="text-sm text-gray-500">Phase 1 scaffold. See CONTEXT.md and CLAUDE.md at the repo root before building on this.</p>
       <Show when="signed-out">
-        <SignInButton mode="modal" />
+        {/* forceRedirectUrl guarantees a real navigation to "/" once sign-in completes (even
+            from the modal), so the redirect above actually runs — without it, a modal
+            sign-in could leave a signed-in KIOSK/Volunteer/etc. sitting on this same flat
+            link list with no server re-render to route it away. */}
+        <SignInButton mode="modal" forceRedirectUrl="/" />
       </Show>
       <Show when="signed-in">
         <UserButton />

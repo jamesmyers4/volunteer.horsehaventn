@@ -1,12 +1,12 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { requireVolunteer } from "@/lib/auth"
+import { requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { r2, R2_BUCKET_NAME, R2_PUBLIC_URL } from "@/lib/r2"
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
   const { id: animalId } = await context.params
 
   const formData = await req.formData()

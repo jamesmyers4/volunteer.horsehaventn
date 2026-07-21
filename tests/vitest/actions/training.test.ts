@@ -79,6 +79,18 @@ describe("logTrainingCompletion", () => {
     expect(await prisma.credentialRecord.count()).toBe(0)
   })
 
+  // V4.md Session 1: KIOSK is a shared, read-only display account — logTrainingCompletion used
+  // to gate only on requireVolunteer() ("any signed-in person"), which would have let a KIOSK
+  // account self-attest training it can't have actually completed.
+  it("rejects a KIOSK-role account and writes nothing", async () => {
+    await createVolunteer({ clerkId: "clerk_ltc_kiosk", role: "KIOSK" })
+    mockSignedInAs("clerk_ltc_kiosk")
+    const credentialType = await getCredentialType()
+
+    await expect(logTrainingCompletion(credentialType.id)).rejects.toThrow("Not authorized")
+    expect(await prisma.credentialRecord.count()).toBe(0)
+  })
+
   it("is self-attestation only — the record is always attributed to the signed-in volunteer, no quiz/verification fields set", async () => {
     const volunteer = await createVolunteer({ clerkId: "clerk_vol_ltc1" })
     mockSignedInAs("clerk_vol_ltc1")

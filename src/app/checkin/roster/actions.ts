@@ -1,7 +1,7 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { requireVolunteer, requireRole } from "@/lib/auth"
+import { requireNonKioskVolunteer, requireRole } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 import { getFarmSettings } from "@/lib/farmSettings"
 import { resolveShiftTimesForOccurrence, type ShiftTypeValue } from "@/lib/shifts"
@@ -49,7 +49,7 @@ export async function assignShiftLead(date: string, shiftType: ShiftTypeValue, f
  * since by the time this runs there's no meaningful difference between the two lists.
  */
 export async function submitRosterAttendance(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireVolunteer()
+  const actor = await requireNonKioskVolunteer()
 
   const shift = await prisma.shift.upsert({
     where: { date_type: { date: new Date(date), type: shiftType } },

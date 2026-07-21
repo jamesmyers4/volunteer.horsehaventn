@@ -2,16 +2,25 @@ import Link from "next/link"
 import { requireVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { createLocationAssignment } from "@/app/animals/[id]/location-actions"
+import AutoRefresh from "@/app/AutoRefresh"
 
 // V2.md Session 6: read-only large-screen display grouped by Location, built on the Session
 // 1 Location/AnimalLocationAssignment model — no new location data, just a new read path plus
 // an inline "correct a move on the spot" affordance for Admin/Shift-Lead.
-export default async function TurnoutBoardPage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
+export default async function TurnoutBoardPage({ searchParams }: { searchParams: Promise<{ period?: string; feedShift?: string }> }) {
   const volunteer = await requireVolunteer()
   const canEdit = volunteer.role === "ADMIN" || volunteer.role === "SHIFT_LEAD"
 
-  const { period: periodParam } = await searchParams
+  const { period: periodParam, feedShift } = await searchParams
   const period: "DAY" | "NIGHT" = periodParam === "NIGHT" ? "NIGHT" : "DAY"
+  // V4.md Session 2: carries the Feed Board's current AM/PM display state through this page's
+  // own Day/Night toggle and back out through "Back to Feed Board", so a kiosk viewer bouncing
+  // Feed Board -> Turnout Board -> Feed Board lands back on the same shift they left, not the
+  // automatic default. A missing/malformed value just means "no state to restore" — falls back
+  // to Feed Board's own automatic noon-boundary switch.
+  const feedShiftValue = feedShift === "AM" || feedShift === "PM" ? feedShift : null
+  const feedShiftQuery = feedShiftValue ? `&feedShift=${feedShiftValue}` : ""
+  const feedBoardHref = feedShiftValue ? `/feed-board?shift=${feedShiftValue}` : "/feed-board"
 
   // Day view groups by turnout FIELD locations (the manual's field map); night view groups by
   // everything else (barn stalls, sick bay, arena) — matches how the barn actually operates
@@ -68,12 +77,23 @@ export default async function TurnoutBoardPage({ searchParams }: { searchParams:
           Grouped by {period === "DAY" ? "field" : "barn/stall"}, lead animal at top of each list. Read-only here; Admin/Shift-Lead can
           correct a location on the spot on a desktop screen.
         </p>
-        <div className="mt-2 flex gap-4 text-sm">
-          <Link href="/turnout-board?period=DAY" className={period === "DAY" ? "font-semibold underline" : "underline text-gray-500"}>
-            Day (fields)
-          </Link>
-          <Link href="/turnout-board?period=NIGHT" className={period === "NIGHT" ? "font-semibold underline" : "underline text-gray-500"}>
-            Night (barn)
+        <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+          <div className="flex gap-3">
+            <Link
+              href={`/turnout-board?period=DAY${feedShiftQuery}`}
+              className={period === "DAY" ? "font-semibold underline" : "underline text-gray-500"}
+            >
+              Day (fields)
+            </Link>
+            <Link
+              href={`/turnout-board?period=NIGHT${feedShiftQuery}`}
+              className={period === "NIGHT" ? "font-semibold underline" : "underline text-gray-500"}
+            >
+              Night (barn)
+            </Link>
+          </div>
+          <Link href={feedBoardHref} className="font-medium underline">
+            ← Back to Feed Board
           </Link>
         </div>
       </div>
@@ -94,7 +114,7 @@ export default async function TurnoutBoardPage({ searchParams }: { searchParams:
                     {canEdit && (
                       <form action={moveAnimal} className="hidden lg:flex lg:items-center lg:gap-1 lg:pt-1">
                         <input type="hidden" name="period" value={period} />
-                        <input type="hidden" name="redirectTo" value={`/turnout-board?period=${period}`} />
+                        <input type="hidden" name="redirectTo" value={`/turnout-board?period=${period}${feedShiftQuery}`} />
                         <select name="locationId" defaultValue={location.id} className="rounded border px-1 py-0.5 text-xs">
                           {allLocations.map((loc) => (
                             <option key={loc.id} value={loc.id}>
@@ -131,6 +151,7 @@ export default async function TurnoutBoardPage({ searchParams }: { searchParams:
         })}
       </div>
       {locations.length === 0 && <p className="text-sm text-gray-500">No locations configured for this view.</p>}
+      <AutoRefresh />
     </main>
   )
 }

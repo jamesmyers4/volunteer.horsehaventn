@@ -40,6 +40,17 @@ describe("postChatMessage", () => {
     expect(await prisma.chatMessage.count()).toBe(0)
   })
 
+  // V4.md Session 1: KIOSK is a shared, read-only display account — postChatMessage used to
+  // gate only on requireVolunteer() ("any signed-in person"), which would have let KIOSK post.
+  it("rejects a KIOSK-role account trying to post even an ordinary (unpinned) message, and writes nothing", async () => {
+    await createVolunteer({ clerkId: "clerk_chat_kiosk", role: "KIOSK" })
+    mockSignedInAs("clerk_chat_kiosk")
+    const channel = await getChatChannel("BROADCAST")
+
+    await expect(postChatMessage(formData({ channelId: channel.id, body: "hello from the TV" }))).rejects.toThrow("Not authorized")
+    expect(await prisma.chatMessage.count()).toBe(0)
+  })
+
   it("rejects a Shift Lead trying to set pinned = true — pinning is ADMIN-only, not Admin-or-Shift-Lead", async () => {
     await createVolunteer({ clerkId: "clerk_chat_lead1", role: "SHIFT_LEAD" })
     mockSignedInAs("clerk_chat_lead1")

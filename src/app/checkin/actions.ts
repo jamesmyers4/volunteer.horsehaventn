@@ -1,12 +1,12 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { requireVolunteer, requireRole } from "@/lib/auth"
+import { requireNonKioskVolunteer, requireRole } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 import { maybeSetFirstShiftDate } from "@/lib/checkin"
 
 export async function submitCheckIn(formData: FormData) {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
 
   const date = String(formData.get("date"))
   const shiftType = String(formData.get("shiftType")) as "AM" | "PM"
@@ -81,7 +81,7 @@ export async function setShiftActualTimes(date: string, shiftType: "AM" | "PM", 
 // correct a bulk ADMIN_ENTRY default (src/app/checkin/roster/actions.ts) that doesn't match
 // when they actually arrived/left, but works for any of their own CheckIn rows.
 export async function updateOwnCheckIn(checkInId: string, formData: FormData) {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
 
   const existing = await prisma.checkIn.findUniqueOrThrow({ where: { id: checkInId } })
   if (existing.volunteerId !== volunteer.id) throw new Error("Not authorized")

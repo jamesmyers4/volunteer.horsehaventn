@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { submitCheckIn, setShiftActualTimes } from "@/app/checkin/actions"
+import { submitCheckIn, setShiftActualTimes, updateOwnCheckIn } from "@/app/checkin/actions"
 import { prisma } from "@/lib/prisma"
 import { mockSignedInAs, mockSignedOut } from "../helpers/auth-mock"
 import { createVolunteer, getWorkType } from "../helpers/factories"
@@ -40,6 +40,20 @@ describe("submitCheckIn", () => {
     expect(checkIn.checkOutMethod).toBe("WEB_FORM")
     expect(checkIn.notes).toBe("Cleaned stalls")
     expect(checkIn.checkInAt.toISOString()).toContain("2026-07-16")
+  })
+
+  // V4.md Session 1: KIOSK is a shared, read-only display account for the barn TV terminals —
+  // it must never be able to check itself in, even though submitCheckIn used to gate only on
+  // requireVolunteer() ("any signed-in person").
+  it("rejects a KIOSK-role account and writes nothing", async () => {
+    await createVolunteer({ clerkId: "clerk_checkin_kiosk", role: "KIOSK" })
+    mockSignedInAs("clerk_checkin_kiosk")
+    const workType = await getWorkType()
+
+    await expect(
+      submitCheckIn(formData({ date: "2026-07-16", shiftType: "AM", workTypeId: workType.id, checkInTime: "08:00", checkOutTime: "12:00" }))
+    ).rejects.toThrow("Not authorized")
+    expect(await prisma.checkIn.count()).toBe(0)
   })
 
   it("omits notes when none were entered", async () => {
@@ -198,5 +212,34 @@ describe("setShiftActualTimes", () => {
     const checkInShift = await prisma.checkIn.findUniqueOrThrow({ where: { id: existingCheckIn.id } })
     const shift = await prisma.shift.findUniqueOrThrow({ where: { id: checkInShift.shiftId } })
     expect(shift.actualStartTime).toBe("09:05")
+  })
+})
+
+// V3.md Session 4 / V4.md Session 1: a volunteer correcting their own retrospective check-in
+// time — self-service, so it used to gate only on requireVolunteer(), the same KIOSK gap
+// submitCheckIn had.
+describe("updateOwnCheckIn", () => {
+  it("rejects a KIOSK-role account, even for a garbage checkInId — the role check runs first", async () => {
+    await createVolunteer({ clerkId: "clerk_uoc_kiosk", role: "KIOSK" })
+    mockSignedInAs("clerk_uoc_kiosk")
+
+    await expect(updateOwnCheckIn("nonexistent-id", formData({ checkInTime: "08:00", checkOutTime: "12:00" }))).rejects.toThrow(
+      "Not authorized"
+    )
+  })
+
+  it("lets a volunteer correct their own check-in's times", async () => {
+    const volunteer = await createVolunteer({ clerkId: "clerk_uoc_vol" })
+    mockSignedInAs("clerk_uoc_vol")
+    const workType = await getWorkType()
+    await captureRedirect(() =>
+      submitCheckIn(formData({ date: "2026-07-23", shiftType: "AM", workTypeId: workType.id, checkInTime: "08:00", checkOutTime: "12:00" }))
+    )
+    const checkIn = await prisma.checkIn.findFirstOrThrow({ where: { volunteerId: volunteer.id } })
+
+    await captureRedirect(() => updateOwnCheckIn(checkIn.id, formData({ checkInTime: "08:15", checkOutTime: "12:15" })))
+
+    const updated = await prisma.checkIn.findUniqueOrThrow({ where: { id: checkIn.id } })
+    expect(updated.checkInAt.getTime()).toBe(new Date("2026-07-23T08:15:00").getTime())
   })
 })

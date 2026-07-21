@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { updateVolunteerRole, updateCanScheduleEvents } from "./actions"
 
-const ROLE_OPTIONS = ["ADMIN", "SHIFT_LEAD", "VOLUNTEER", "GUEST"] as const
+const ROLE_OPTIONS = ["ADMIN", "SHIFT_LEAD", "VOLUNTEER", "GUEST", "KIOSK"] as const
 
 async function checkAccess() {
   try {

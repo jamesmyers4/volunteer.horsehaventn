@@ -1,7 +1,7 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { requireRole, requireVolunteer } from "@/lib/auth"
+import { requireRole, requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { validateTaskLocationPairing, startOfDay, type ShiftTypeValue } from "@/lib/facilityTasks"
 
@@ -72,7 +72,7 @@ export async function updateRecurringTaskTemplate(templateId: string, formData: 
 // directly). Not wrapped in withChangeLog — see the model's own schema comment for why
 // FacilityTaskCompletion isn't a tracked model.
 export async function logFacilityTaskCompletion(formData: FormData) {
-  const volunteer = await requireVolunteer()
+  const volunteer = await requireNonKioskVolunteer()
 
   const templateIdRaw = formData.get("templateId")
   const templateId = templateIdRaw && String(templateIdRaw).length > 0 ? String(templateIdRaw) : undefined
