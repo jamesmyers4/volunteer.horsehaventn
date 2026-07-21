@@ -31,8 +31,11 @@ describe("withChangeLog — CREATE", () => {
 
   it("does not write any ChangeLog rows for a model that isn't tracked", async () => {
     const before = await prisma.changeLog.count()
+    // name is run-unique (V3FIX.md made CareType.name @unique) since CareType is a lookup
+    // table left alone between test runs — a fixed literal here would collide with itself
+    // on any repeat local run against the same test database.
     const careType = await withChangeLog(prisma, "changer-1").careType.create({
-      data: { name: "Test Care Type", category: "OTHER" }
+      data: { name: `Test Care Type ${Math.random().toString(36).slice(2, 8)}`, category: "OTHER" }
     })
     const after = await prisma.changeLog.count()
     expect(after).toBe(before)

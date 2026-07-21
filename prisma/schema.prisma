@@ -250,9 +250,8 @@ model CredentialType {
   id                String             @id @default(cuid())
   // Made unique in the V2.md Session 2 migration — discovered while adding upsert-based
   // seeding that this table had no unique constraint at all, so re-running `db:seed` was
-  // silently duplicating every row indefinitely. FeedType/CareType/WorkType/MetricType have
-  // the same latent gap; out of scope here (nothing in Session 2 touches them), flagged in
-  // HANDOFF.md as a follow-up.
+  // silently duplicating every row indefinitely. FeedType/CareType/WorkType/MetricType had
+  // the same latent gap, closed later in the V3FIX.md session — see their own `name` fields.
   name              String             @unique
   active            Boolean            @default(true)
   // Below: added for V2.md Session 2. isRequired/renewalPeriodDays drive the "expired or
@@ -430,7 +429,8 @@ model ShiftTemplate {
 
 model WorkType {
   id        String    @id @default(cuid())
-  name      String
+  // See FeedType.name's comment — same V3FIX.md unique-constraint backfill.
+  name      String    @unique
   active    Boolean   @default(true)
   createdAt DateTime  @default(now())
   checkIns  CheckIn[]
@@ -589,7 +589,10 @@ model Placement {
 
 model FeedType {
   id          String            @id @default(cuid())
-  name        String
+  // Made unique in the V3FIX.md migration, closing the gap CredentialType.name's own
+  // migration comment flagged — see that comment for the full story on why createMany +
+  // skipDuplicates was silently duplicating rows without a real constraint to dedupe against.
+  name        String            @unique
   defaultUnit FeedUnit
   category    FeedCategory
   active      Boolean           @default(true)
@@ -664,7 +667,8 @@ model MedicationLog {
 
 model CareType {
   id                 String                  @id @default(cuid())
-  name               String
+  // See FeedType.name's comment — same V3FIX.md unique-constraint backfill.
+  name               String                  @unique
   category           CareCategory
   active             Boolean                 @default(true)
   createdAt          DateTime                @default(now())
@@ -726,7 +730,8 @@ model RecurringCareSchedule {
 
 model MetricType {
   id        String         @id @default(cuid())
-  name      String
+  // See FeedType.name's comment — same V3FIX.md unique-constraint backfill.
+  name      String         @unique
   unit      String
   active    Boolean        @default(true)
   createdAt DateTime       @default(now())
