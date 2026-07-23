@@ -27,14 +27,22 @@ test("default roster derives from RegularShiftAssignment; bulk submit creates Ch
   })
 
   // A walk-on who already self-checked-in via the kiosk for today's AM shift — the bulk
-  // action must never touch this row (V3.md's own test-coverage requirement).
+  // action must never touch this row (V3.md's own test-coverage requirement). Inserted
+  // directly rather than driven through the real /kiosk UI: the kiosk's real-time toggle
+  // picks AM vs PM from the actual wall-clock hour (src/lib/shifts.ts's
+  // determineShiftTypeForNow), which only lands on AM when the suite happens to run before
+  // roughly 1:30pm local time — outside that window this test failed deterministically, not
+  // flakily. Scoping to today's AM shift directly makes the test time-of-day-independent.
   const walkOn = await createThrowawayVolunteer("WalkOn")
-  await adminPage.goto("/kiosk")
-  await adminPage.getByPlaceholder("Check-in code").fill(walkOn.checkInCode)
-  await adminPage.getByRole("button", { name: "Check In / Out" }).click()
-  await expect(adminPage.getByText(`Welcome, ${walkOn.name}!`)).toBeVisible()
-  const originalCheckIn = await prisma.checkIn.findFirstOrThrow({ where: { volunteerId: walkOn.id } })
-  expect(originalCheckIn.checkInMethod).toBe("KIOSK")
+  const workType = await prisma.workType.findFirstOrThrow({ where: { name: "Regular Shift" } })
+  const amShift = await prisma.shift.upsert({
+    where: { date_type: { date: today, type: "AM" } },
+    update: {},
+    create: { date: today, type: "AM" }
+  })
+  const originalCheckIn = await prisma.checkIn.create({
+    data: { volunteerId: walkOn.id, shiftId: amShift.id, workTypeId: workType.id, checkInAt: new Date(), checkInMethod: "KIOSK" }
+  })
 
   await adminPage.goto("/checkin/roster?shiftType=AM")
   await expect(adminPage.getByRole("heading", { name: /Shift Roster/ })).toBeVisible()
