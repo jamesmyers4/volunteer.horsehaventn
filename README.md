@@ -63,30 +63,30 @@ Full spec for every session: [`V2.md`](./V2.md). Sessions are meant to run one a
 
 ## Testing
 
-- **Vitest:** 123 tests passing (unit/API/DB)
-- **Playwright:** 31 tests passing (end-to-end)
-- Full suite verified clean against a fresh DB reset, with clean `tsc`/lint.
+- **Vitest:** 420 tests passing (unit/API/DB)
+- **Playwright:** 113 tests passing (end-to-end)
+- Full suite verified clean against a fresh DB reset in July 2026 (Linux Mint laptop setup) — this was also the first time the E2E suite ran end-to-end against a live Clerk instance; see `CLAUDE.md`'s Testing section for what that run found and fixed.
 
 Run locally:
 
 ```
-npm run test          # Vitest
-npm run test:e2e       # Playwright
+npm run test:db:reset   # once: spin up the local test Postgres, migrate, seed
+npm run test:unit       # Vitest
+npm run test:e2e        # Playwright (real Clerk + Resend — see CLAUDE.md before running)
+npm run test:all        # all of the above
 ```
-
-_(Confirm these script names against `package.json` — update if they differ.)_
 
 ## Getting Started
 
 ```
 npm install
-cp .env.example .env    # fill in Neon, Clerk, R2, and Pusher credentials
+cp .env.example .env    # fill in Neon, Clerk, R2, Pusher, and Resend credentials
 npx prisma generate
-npx prisma migrate dev
+npx prisma migrate deploy   # NOT `migrate dev` — Neon is shared/live, deploy only applies existing migrations
 npm run dev
 ```
 
-_(This section is a reasonable default for this stack, not verified against the current `package.json`/`.env.example` — confirm exact commands and required env vars before treating it as final.)_
+Verified against a fresh clone in July 2026. `--with-deps` (Playwright's system library install) and the local Docker test DB setup both need an interactive `sudo` password — run those steps directly in your own terminal rather than through an agent/CI shell.
 
 ## Project Docs
 
