@@ -17,6 +17,21 @@ export async function maybeSetFirstShiftDate(volunteer: { id: string; firstShift
   })
 }
 
+/**
+ * Finds the Shift row for this date+type if it already exists; otherwise creates it through
+ * withChangeLog so the CREATE is actually captured (a plain prisma.shift.upsert() bypasses
+ * ChangeLog entirely, since `upsert` isn't one of the operations the extension hooks — only
+ * `create` and `update` are). Every call site that used to call prisma.shift.upsert() directly
+ * should call this instead.
+ */
+export async function findOrCreateShift(changedBy: string, date: Date, type: "AM" | "PM") {
+  const existing = await prisma.shift.findUnique({ where: { date_type: { date, type } } })
+  if (existing) return existing
+  return withChangeLog(prisma, changedBy, "Shift occurrence created").shift.create({
+    data: { date, type }
+  })
+}
+
 // Matches the UTC-date-string convention already used by submitCheckIn (src/app/checkin/
 // actions.ts's `new Date(date)` from an ISO date input) and src/app/checkin/page.tsx's
 // todayStart — not locale/local-timezone Date components, which would parse to a
