@@ -1,780 +1,116 @@
-# Task List for Local AI Agent (Qwen2.5-Coder)
+# Working With Qwen2.5-Coder (and Other Local LLMs) — Blueprint
+
+## Status
+
+The first real task list run against this pattern (16 tasks, `ChangeLog`-bypass fix + auth-ordering fix + missing-`orderBy` fix + a doc sync) completed 2026-07-25. Qwen2.5-Coder followed every task's boundaries exactly — no scope creep, no unrelated edits, correct sequencing on dependent tasks. One bug shipped anyway: Task 1's own spec (written by Claude, not qwen) replaced an atomic `prisma.shift.upsert()` with a non-atomic find-then-create, introducing a race condition qwen had no way to know to look for since the task was framed as "mechanical." See "Lessons learned" below — that's the one real gap this run exposed, and it's a task-authoring gap, not a qwen-execution gap. Full history of that task list lives in git log / `SUMMARY.md`'s audit findings — this file is deliberately not a historical record, it's a template for the next one.
+
+---
+
+## What local models are good for here
+
+Small, independent, fully-specified, verbatim-matched code edits: swap one expression for another, add one field to an object literal, wrap an existing line in a conditional, sync a doc sentence to match code. Anything where the "right answer" can be written out completely in the task itself and checking correctness is a `grep`/`tsc`/`eslint` command, not a judgment call.
+
+## What local models are not good for here
+
+Anything requiring:
+- **A design decision** ("should this be blocked or allowed with a flag" — that's a human call, see `CLAUDE.md`'s "Things to Ask About Before Building, Not Assume").
+- **Judging whether a replacement preserves a non-obvious property of the original code** — atomicity, transaction boundaries, error-handling behavior, timing/ordering guarantees. A local model executing a task verbatim will faithfully reproduce a subtle bug if the task itself contains one; it has no reason to second-guess instructions framed as "mechanical." This is on whoever writes the task list (Claude, in this project's workflow) to catch before handing it off — see the lesson below.
+- **Anything touching `tests/`, `prisma/schema.prisma`, or requiring `prisma migrate`** — never delegate these to an unsupervised local task list regardless of how small the change looks.
+- **Vague or open-ended instructions** ("clean this up," "make this better") — local models need the exact before/after text, not a description of intent.
+
+---
+
+## Lessons learned (update this section after every run)
+
+1. **A task that removes a Prisma `upsert(...)` needs an atomicity check before it's handed off.** `upsert` compiles to a single atomic `INSERT ... ON CONFLICT`. Any replacement — a helper, a `findUnique`+`create` pair, anything with more than one round trip — is a TOCTOU race under concurrent callers unless the replacement explicitly handles the "someone else created it between my check and my write" case (e.g. catching the unique-constraint error and re-fetching). Whoever authors task 1 of a list like this must resolve this *before* task 1 goes out, not discover it in review afterward. (This is exactly what happened on 2026-07-25 — caught by human review of already-committed Task 1 code, not by qwen, and not by the original task author until re-reading it.)
+2. **Verbatim "Current code" blocks worked well as a guardrail.** Requiring an exact match before editing, with an explicit "STOP, don't improvise" instruction, meant qwen never silently adapted to a codebase that had drifted from what the task assumed. Keep this pattern.
+3. **Explicit dependency ordering (`Tasks 2–7 depend on Task 1`) was followed correctly**, including the subtler case (Task 6 leaving a known-bad permission-ordering issue alone because its *own* fix was deferred to Task 8). Local models handle "do X now, something else fixes the other problem later" fine as long as it's stated, not implied.
+4. **Boundaries scoped to "this one function/query, not the JSX below it" held.** Even in large files (`feed-board/page.tsx`), qwen touched only the named `prisma.*` call and nothing else in the file.
+
+---
+
+## Task-list template
+
+Copy this structure for the next batch of mechanical fixes:
+
+```markdown
+# Task List for Local AI Agent (<model name>)
 
 ## Read this whole section before doing anything
 
-You are working in an existing Next.js 16 + Prisma 7 + TypeScript codebase called `volunteer.horsehaventn`. This document contains **16 numbered tasks**. Each task is a small, independent, mechanical code change.
+You are working in <repo/stack one-liner>. This document contains **N numbered tasks**.
+Each task is a small, independent, mechanical code change.
 
 **Rules you must follow:**
 
-1. **Do exactly one task at a time.** Finish it, run its success check, and stop. Do not start the next task in the same edit. Do not combine two tasks into one change.
-2. **Only touch the file(s) named in that task.** Do not "improve," reformat, rename variables, add comments, or refactor anything else you notice in a file while you're in there for a different reason. If you see something else that looks wrong, leave it alone — it is not part of your task.
-3. **Do not touch any file under `src/app/**/*.tsx` for styling/layout/wording.** Some tasks edit `.tsx` files, but only the specific data-fetching `prisma.*.findMany(...)` call shown in that task — never the JSX/markup below it in the same file.
-4. **Match the existing code snippets exactly** before making your edit — the "Current code" block in each task is copied verbatim from the real file. If what you find in the file does not match the "Current code" block shown (even by one character), STOP and do not guess — that means either a task before this one wasn't applied correctly, or the file has changed. Do not try to improvise a fix.
-5. **Never delete a test file, never edit anything under `tests/`, never edit `prisma/schema.prisma`, never run `prisma migrate`.** None of these 16 tasks require it.
-6. **Do the tasks in order.** Tasks 2–7 depend on Task 1 already being done (they call a helper function Task 1 creates). Tasks 8 and 9 depend on Tasks 6 and 7 respectively already being done (same functions, later edit). All other tasks are independent of each other and can be done in any order, but do them in numeric order anyway to keep things simple.
-7. After each task, use the **"Success check"** at the end of that task to confirm you did it right before moving on. If the success check fails, re-read the task and fix your edit — do not move to the next task with a failing check.
+1. Do exactly one task at a time. Finish it, run its success check, and stop.
+2. Only touch the file(s) named in that task. Do not "improve," reformat, rename, or refactor
+   anything else you notice while you're in there for a different reason.
+3. <Any file-type-wide guardrail specific to this repo, e.g. "don't touch .tsx JSX/markup,
+   only the named prisma.*.findMany call.">
+4. Match the "Current code" block exactly before editing — it's copied verbatim from the real
+   file. If it doesn't match (even by one character), STOP. Don't guess, don't improvise a fix.
+5. Never touch <tests/ dir>, <schema file>, never run <migration command> — none of these
+   tasks require it.
+6. Do the tasks in order if any task depends on a prior one's output (name the exact
+   dependency, e.g. "Tasks 2–7 call a helper Task 1 creates").
+7. After each task, run its **Success check** before moving to the next. If it fails, re-read
+   and fix — don't proceed with a failing check.
 
-If you cannot run a command listed in a success check (for example, no database is available in your environment), at minimum run the `grep` commands given — they don't need a database and will still tell you whether the edit is textually correct.
-
-**Lesson from a human review of Task 1's first pass, applies to any future task in a list like this:** when a task's "mechanical" change replaces a Prisma `upsert(...)` with something else (a helper, a `findUnique`+`create` pair, etc.), check whether the replacement is still atomic. `upsert` compiles to a single atomic `INSERT ... ON CONFLICT` — a separate find-then-create is two round trips, and two callers racing to create the same row (e.g. two people checking in for the same not-yet-existing shift occurrence at nearly the same moment) can both pass the "does it exist" check before either one creates, so the second `create()` throws a unique-constraint error (Prisma error code `P2002`) instead of quietly resolving to the same row like `upsert` did. This is exactly what happened in Task 1's original `findOrCreateShift` (now fixed — see that task below). Don't assume "small, independent, mechanical" means "safe to ignore concurrency" — a task instruction that removes an `upsert` should be treated as a signal to check this, not just copy the replacement code verbatim without thinking about it.
-
----
-
-## Task 1 — Add a `findOrCreateShift` helper to `src/lib/checkin.ts` (COMPLETED)
-
-**Why:** `Shift` is supposed to have every write tracked in the `ChangeLog` table (see `src/lib/prisma.ts`'s `trackedModels` array, which includes `"Shift"`). But every place in the code that creates a `Shift` row uses `prisma.shift.upsert(...)` directly, and Prisma's `withChangeLog` extension only watches the `create` and `update` operations — `upsert` is a different operation and is never seen by the extension. So new `Shift` rows are created with **no ChangeLog entry at all**. This task adds one small helper function that does the same job (find the row if it exists, create it through ChangeLog if it doesn't) but goes through `withChangeLog` correctly. Tasks 2–7 will then replace each of the 6 places that currently call `prisma.shift.upsert(...)` directly with a call to this new helper.
-
-**File to edit:** `src/lib/checkin.ts`
-
-**Current code** (this is the top of the file, unchanged — you are only adding new code, not replacing this part):
-
-```ts
-import { prisma, withChangeLog } from "./prisma"
-import { getFarmSettings } from "./farmSettings"
-import { determineShiftTypeForNow } from "./shifts"
-
-const DEFAULT_KIOSK_WORK_TYPE = "Regular Shift"
-
-/**
- * V2.md Session 2's tenure-clock rule ("set from the first recorded shift/check-in, never
- * touched again") lives here so both the retrospective web form (src/app/checkin/
- * actions.ts) and the real-time kiosk/QR toggle (performKioskToggle below) apply it
- * identically.
- */
-export async function maybeSetFirstShiftDate(volunteer: { id: string; firstShiftDate: Date | null }, checkInAt: Date) {
-  if (volunteer.firstShiftDate) return
-  await withChangeLog(prisma, volunteer.id, "First shift date set from first check-in").volunteer.update({
-    where: { id: volunteer.id },
-    data: { firstShiftDate: checkInAt }
-  })
-}
-```
-
-**UPDATE (2026-07-25): this task's original version had a concurrency bug, now fixed by a human reviewer directly in `src/lib/checkin.ts`. The block below reflects what's actually in the file now — if you're re-running this task from scratch, insert this corrected version, not a bare find-then-create.**
-
-The original version replaced `prisma.shift.upsert(...)` — which Postgres runs as one atomic `INSERT ... ON CONFLICT` — with a plain `findUnique` then `create`. That's not atomic: two callers racing to create the *same* date+type occurrence (e.g. the first two people checking in for AM on a given day, submitting within moments of each other) can both pass the `findUnique` check before either one creates, and the second `create()` then throws a Prisma `P2002` unique-constraint error against `Shift`'s `@@unique([date, type])`, instead of resolving to the same row the way `upsert` used to. The fix catches that specific error and re-fetches the row the other caller just created.
-
-**Change to make:** insert a new exported function immediately **after** `maybeSetFirstShiftDate` and **before** the `startOfDay` function that follows it. Add exactly this:
-
-```ts
-
-/**
- * Finds the Shift row for this date+type if it already exists; otherwise creates it through
- * withChangeLog so the CREATE is actually captured (a plain prisma.shift.upsert() bypasses
- * ChangeLog entirely, since `upsert` isn't one of the operations the extension hooks — only
- * `create` and `update` are). Every call site that used to call prisma.shift.upsert() directly
- * should call this instead.
- *
- * The find-then-create here is not atomic the way upsert's INSERT ... ON CONFLICT is, so two
- * concurrent callers racing to create the same date+type occurrence can both pass the
- * findUnique check before either creates. The @@unique([date, type]) constraint on Shift
- * still prevents a duplicate row, but the loser's .create() throws P2002 instead of silently
- * resolving to the winner's row like upsert would have — caught below and re-fetched so
- * callers see the same "find or create" behavior either way.
- */
-export async function findOrCreateShift(changedBy: string, date: Date, type: "AM" | "PM") {
-  const existing = await prisma.shift.findUnique({ where: { date_type: { date, type } } })
-  if (existing) return existing
-  try {
-    return await withChangeLog(prisma, changedBy, "Shift occurrence created").shift.create({
-      data: { date, type }
-    })
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return await prisma.shift.findUniqueOrThrow({ where: { date_type: { date, type } } })
-    }
-    throw error
-  }
-}
-```
-
-You also need one new import at the top of the file, alongside the existing ones:
-
-```ts
-import { Prisma } from "../generated/prisma/client"
-```
-
-Do not change anything else in the file for this task — `startOfDay`, `performKioskToggle`, and everything else stay exactly as they are for now (later tasks will touch `performKioskToggle`).
-
-**Boundaries:** only add the new function and the one new import shown above. Do not modify `maybeSetFirstShiftDate` or anything below the insertion point in this task.
-
-**Success check:** run
-```
-grep -n "export async function findOrCreateShift" src/lib/checkin.ts
-grep -n "PrismaClientKnownRequestError" src/lib/checkin.ts
-```
-Each should print at least one line. Also run `npx tsc --noEmit` (or your project's typecheck command) — it should not report any new errors in `src/lib/checkin.ts`.
+If a success-check command needs infrastructure you don't have (a DB, a running server), run
+the grep/tsc/lint parts only — they don't need it and still verify textual correctness.
 
 ---
 
-## Task 2 — Use `findOrCreateShift` in `submitCheckIn` (`src/app/checkin/actions.ts`)
+## Task N — <one-line description>
 
-**Requires:** Task 1 done first.
+**Requires:** <prior task # or "nothing">
 
-**File to edit:** `src/app/checkin/actions.ts`
+**Why:** <the actual reason, in plain language, so the model isn't just pattern-matching>
+
+**File to edit:** `path/to/file.ts`
 
 **Current code:**
-
-```ts
-  const checkInAt = new Date(`${date}T${checkInTime}:00`)
-  const checkOutAt = new Date(`${date}T${checkOutTime}:00`)
-
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
-
-  await withChangeLog(prisma, volunteer.id, "Self-service check-in").checkIn.create({
-```
+\`\`\`ts
+<verbatim block copied from the real file, enough surrounding context to be unique>
+\`\`\`
 
 **Replace with:**
+\`\`\`ts
+<exact replacement>
+\`\`\`
 
-```ts
-  const checkInAt = new Date(`${date}T${checkInTime}:00`)
-  const checkOutAt = new Date(`${date}T${checkOutTime}:00`)
-
-  const shift = await findOrCreateShift(volunteer.id, new Date(date), shiftType)
-
-  await withChangeLog(prisma, volunteer.id, "Self-service check-in").checkIn.create({
-```
-
-You also need to add `findOrCreateShift` to the import at the top of the file. **Current code:**
-
-```ts
-import { maybeSetFirstShiftDate } from "@/lib/checkin"
-```
-
-**Replace with:**
-
-```ts
-import { maybeSetFirstShiftDate, findOrCreateShift } from "@/lib/checkin"
-```
-
-**Boundaries:** only touch the `submitCheckIn` function and the import line shown. Do not touch `setShiftActualTimes` or `updateOwnCheckIn` in this same file yet — those are Task 3 and are not part of this task.
+**Boundaries:** <what NOT to touch in this same file/function, explicitly>
 
 **Success check:**
-```
-grep -n "findOrCreateShift" src/app/checkin/actions.ts
-```
-should show the import line plus one usage inside `submitCheckIn`. `grep -c "prisma.shift.upsert" src/app/checkin/actions.ts` should now show `1` (only `setShiftActualTimes` still has one, until Task 3).
+\`\`\`
+grep -n "<something that proves the edit landed>" path/to/file.ts
+\`\`\`
+should <exact expected output>. Also run `<typecheck/lint command>` — no new errors.
 
 ---
 
-## Task 3 — Use `findOrCreateShift` in `setShiftActualTimes` (`src/app/checkin/actions.ts`)
+## Final combined check (run once after all tasks are done)
 
-**Requires:** Tasks 1 and 2 done first (the import was already added in Task 2).
-
-**File to edit:** `src/app/checkin/actions.ts`
-
-**Current code:**
-
-```ts
-  const actualStartTime = String(formData.get("actualStartTime"))
-  const actualEndTime = String(formData.get("actualEndTime"))
-
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
-
-  await withChangeLog(prisma, actor.id, "Shift actual time override").shift.update({
+<grep/tsc/lint commands that verify the whole batch together, not just each task individually>
 ```
-
-**Replace with:**
-
-```ts
-  const actualStartTime = String(formData.get("actualStartTime"))
-  const actualEndTime = String(formData.get("actualEndTime"))
-
-  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
-
-  await withChangeLog(prisma, actor.id, "Shift actual time override").shift.update({
-```
-
-**Boundaries:** only this one function. `submitCheckIn` (Task 2) and `updateOwnCheckIn` are not touched here.
-
-**Success check:**
-```
-grep -c "prisma.shift.upsert" src/app/checkin/actions.ts
-```
-should now print `0`. `grep -n "findOrCreateShift" src/app/checkin/actions.ts` should show the import plus two usages now.
 
 ---
 
-## Task 4 — Use `findOrCreateShift` in `performKioskToggle` (`src/lib/checkin.ts`)
-
-**Requires:** Task 1 done first.
-
-**File to edit:** `src/lib/checkin.ts`
-
-**Current code:**
-
-```ts
-  const [farmSettings, templates] = await Promise.all([getFarmSettings(), prisma.shiftTemplate.findMany()])
-  const shiftType = determineShiftTypeForNow(templates, farmSettings.activeSeason, now)
-  const date = startOfDay(now)
-
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date, type: shiftType } },
-    update: {},
-    create: { date, type: shiftType }
-  })
-
-  const workType = await prisma.workType.findFirst({ where: { name: DEFAULT_KIOSK_WORK_TYPE, active: true } })
-```
-
-**Replace with:**
-
-```ts
-  const [farmSettings, templates] = await Promise.all([getFarmSettings(), prisma.shiftTemplate.findMany()])
-  const shiftType = determineShiftTypeForNow(templates, farmSettings.activeSeason, now)
-  const date = startOfDay(now)
-
-  const shift = await findOrCreateShift(volunteer.id, date, shiftType)
-
-  const workType = await prisma.workType.findFirst({ where: { name: DEFAULT_KIOSK_WORK_TYPE, active: true } })
-```
-
-Note: `performKioskToggle` is in the same file as `findOrCreateShift` (added in Task 1), so **no new import is needed** for this task — it's already in scope.
-
-**Boundaries:** only this block inside `performKioskToggle`. Do not touch the rest of the function (the earlier "check-out" branch, `maybeSetFirstShiftDate`, or the return statement).
-
-**Success check:**
-```
-grep -c "prisma.shift.upsert" src/lib/checkin.ts
-```
-should now print `0`.
-
----
-
-## Task 5 — Use `findOrCreateShift` in `assignShiftLead` (`src/app/checkin/roster/actions.ts`)
-
-**Requires:** Task 1 done first.
-
-**File to edit:** `src/app/checkin/roster/actions.ts`
-
-**Current code:**
-
-```ts
-  const rawLeadId = formData.get("assignedLeadId")
-  const assignedLeadId = rawLeadId && String(rawLeadId).length > 0 ? String(rawLeadId) : null
-
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
-
-  await withChangeLog(prisma, actor.id, "Occurrence shift lead assignment").shift.update({
-```
-
-**Replace with:**
-
-```ts
-  const rawLeadId = formData.get("assignedLeadId")
-  const assignedLeadId = rawLeadId && String(rawLeadId).length > 0 ? String(rawLeadId) : null
-
-  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
-
-  await withChangeLog(prisma, actor.id, "Occurrence shift lead assignment").shift.update({
-```
-
-You also need to add the import. **Current code** (top of file):
-
-```ts
-import { canManageShiftRoster } from "@/lib/shiftRoster"
-```
-
-**Replace with:**
-
-```ts
-import { canManageShiftRoster } from "@/lib/shiftRoster"
-import { findOrCreateShift } from "@/lib/checkin"
-```
-
-**Boundaries:** only `assignShiftLead` and the import in this task. `submitRosterAttendance` (further down in the same file) is Task 6 — do not touch it yet.
-
-**Success check:**
-```
-grep -n "findOrCreateShift" src/app/checkin/roster/actions.ts
-```
-should show the import plus one usage. `grep -c "prisma.shift.upsert" src/app/checkin/roster/actions.ts` should show `1` (only `submitRosterAttendance` left, until Task 6).
-
----
-
-## Task 6 — Use `findOrCreateShift` in `submitRosterAttendance` (`src/app/checkin/roster/actions.ts`)
-
-**Requires:** Tasks 1 and 5 done first (import already added in Task 5).
-
-**File to edit:** `src/app/checkin/roster/actions.ts`
-
-**Current code:**
-
-```ts
-export async function submitRosterAttendance(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireNonKioskVolunteer()
-
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
-
-  if (!canManageShiftRoster(actor, shift)) throw new Error("Not authorized")
-```
-
-**Replace with:**
-
-```ts
-export async function submitRosterAttendance(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireNonKioskVolunteer()
-
-  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
-
-  if (!canManageShiftRoster(actor, shift)) throw new Error("Not authorized")
-```
-
-**Boundaries:** only this one block. Note this task alone still leaves the permission check running after the write — that ordering problem is fixed separately in Task 8. Do not try to fix the ordering issue in this task; just do the mechanical `findOrCreateShift` swap shown above and stop.
-
-**Success check:**
-```
-grep -c "prisma.shift.upsert" src/app/checkin/roster/actions.ts
-```
-should now print `0`.
-
----
-
-## Task 7 — Use `findOrCreateShift` in `submitShiftReport` (`src/app/checkin/shift-report/actions.ts`)
-
-**Requires:** Task 1 done first.
-
-**File to edit:** `src/app/checkin/shift-report/actions.ts`
-
-**Current code:**
-
-```ts
-export async function submitShiftReport(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireNonKioskVolunteer()
-
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
-
-  if (!canSubmitShiftReport(actor, shift)) throw new Error("Not authorized")
-```
-
-**Replace with:**
-
-```ts
-export async function submitShiftReport(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireNonKioskVolunteer()
-
-  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
-
-  if (!canSubmitShiftReport(actor, shift)) throw new Error("Not authorized")
-```
-
-You also need to add the import. **Current code** (top of file):
-
-```ts
-import { canSubmitShiftReport } from "@/lib/shiftReport"
-import type { ShiftTypeValue } from "@/lib/shifts"
-```
-
-**Replace with:**
-
-```ts
-import { canSubmitShiftReport } from "@/lib/shiftReport"
-import type { ShiftTypeValue } from "@/lib/shifts"
-import { findOrCreateShift } from "@/lib/checkin"
-```
-
-**Boundaries:** only this function and the import. Just like Task 6, leave the permission-check ordering alone here — that's Task 9.
-
-**Success check:**
-```
-grep -c "prisma.shift.upsert" src/app/checkin/shift-report/actions.ts
-```
-should print `0`. After this task, run:
-```
-grep -rc "prisma.shift.upsert" src/app src/lib
-```
-Every file should show `0` — no `prisma.shift.upsert` call should remain anywhere in the codebase.
-
----
-
-## Task 8 — Move the permission check before the write in `submitRosterAttendance`
-
-**Requires:** Task 6 done first.
-
-**Why:** right now, `submitRosterAttendance` creates a `Shift` row (a database write) *before* checking whether the caller is actually allowed to submit a roster for that shift. The fix is to look up the shift **read-only** first, check permission against that, and only create the row after the check passes.
-
-**File to edit:** `src/app/checkin/roster/actions.ts`
-
-**Current code** (this is what Task 6 left behind):
-
-```ts
-export async function submitRosterAttendance(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireNonKioskVolunteer()
-
-  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
-
-  if (!canManageShiftRoster(actor, shift)) throw new Error("Not authorized")
-```
-
-**Replace with:**
-
-```ts
-export async function submitRosterAttendance(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireNonKioskVolunteer()
-
-  const existingShift = await prisma.shift.findUnique({ where: { date_type: { date: new Date(date), type: shiftType } } })
-  if (!canManageShiftRoster(actor, existingShift)) throw new Error("Not authorized")
-
-  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
-```
-
-**Boundaries:** only this block at the top of `submitRosterAttendance`. Everything below this point in the function (the `presentVolunteerIds` handling, the loop, etc.) stays exactly as-is — it already refers to a variable named `shift`, which still exists with the same shape after this change, so nothing else in the function needs to change.
-
-**Success check:**
-```
-grep -n "canManageShiftRoster(actor, existingShift)" src/app/checkin/roster/actions.ts
-```
-should print one line, and it should appear **before** the `findOrCreateShift(actor.id, ...)` line in the same function (check by reading the line numbers — the `canManageShiftRoster` line number should be smaller than the `findOrCreateShift` line number). If a test database is available, run `npm run test:unit -- roster` and confirm no new failures.
-
----
-
-## Task 9 — Move the permission check before the write in `submitShiftReport`
-
-**Requires:** Task 7 done first.
-
-**File to edit:** `src/app/checkin/shift-report/actions.ts`
-
-**Current code:**
-
-```ts
-export async function submitShiftReport(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireNonKioskVolunteer()
-
-  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
-
-  if (!canSubmitShiftReport(actor, shift)) throw new Error("Not authorized")
-```
-
-**Replace with:**
-
-```ts
-export async function submitShiftReport(date: string, shiftType: ShiftTypeValue, formData: FormData) {
-  const actor = await requireNonKioskVolunteer()
-
-  const existingShift = await prisma.shift.findUnique({ where: { date_type: { date: new Date(date), type: shiftType } } })
-  if (!canSubmitShiftReport(actor, existingShift)) throw new Error("Not authorized")
-
-  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
-```
-
-**Boundaries:** only this block. Everything after it (the `existing` ShiftReport check, the template lookup, the response-creation loop) stays exactly as-is.
-
-**Success check:**
-```
-grep -n "canSubmitShiftReport(actor, existingShift)" src/app/checkin/shift-report/actions.ts
-```
-should print one line, appearing before the `findOrCreateShift` line in the function.
-
----
-
-## Task 10 — Add `orderBy` to the feeding-override include in `src/app/animals/[id]/page.tsx`
-
-**Why:** when more than one `FeedingOverride` row exists for the same baseline on the same day (e.g. a correction logged later the same day), the code reads `baseline.overrides[0]` expecting it to be the most recent one. Without an explicit `orderBy` on this nested include, the order Postgres/Prisma returns rows in in this situation is not guaranteed, so `[0]` might be the original row, not the correction.
-
-**File to edit:** `src/app/animals/[id]/page.tsx`
-
-**Current code:**
-
-```ts
-  const feedingBaselines = await prisma.feedingBaseline.findMany({
-    where: { animalId: id },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } } } },
-    orderBy: [{ shift: "asc" }, { feedType: { name: "asc" } }]
-  })
-```
-
-**Replace with:**
-
-```ts
-  const feedingBaselines = await prisma.feedingBaseline.findMany({
-    where: { animalId: id },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
-    orderBy: [{ shift: "asc" }, { feedType: { name: "asc" } }]
-  })
-```
-
-Only the `overrides: {...}` part changed — one `orderBy: { createdAt: "desc" }` key was added inside it. Nothing else on this line or elsewhere in the file changes.
-
-**Boundaries:** only this exact `prisma.feedingBaseline.findMany` call. Do not touch the `medicationRegimens` query in the same file — that's Task 12.
-
-**Success check:**
-```
-grep -n "overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy" src/app/animals/\[id\]/page.tsx
-```
-should print one line.
-
----
-
-## Task 11 — Add `orderBy` to the feeding-override include in `src/app/dashboard/page.tsx`
-
-**File to edit:** `src/app/dashboard/page.tsx`
-
-**Current code:**
-
-```ts
-  const feedingBaselines = await prisma.feedingBaseline.findMany({
-    where: { animalId: { in: animalIds } },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } } } },
-    orderBy: [{ shift: "asc" }, { feedType: { name: "asc" } }]
-  })
-```
-
-**Replace with:**
-
-```ts
-  const feedingBaselines = await prisma.feedingBaseline.findMany({
-    where: { animalId: { in: animalIds } },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
-    orderBy: [{ shift: "asc" }, { feedType: { name: "asc" } }]
-  })
-```
-
-**Boundaries:** only this query. Do not touch the `medicationRegimens` query further down in the same file (that's Task 13), and do not touch any JSX in this file.
-
-**Success check:**
-```
-grep -n "overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy" src/app/dashboard/page.tsx
-```
-should print one line.
-
----
-
-## Task 12 — Add `orderBy` to the medication-log include in `src/app/animals/[id]/page.tsx`
-
-**Requires:** nothing (independent of Task 10, but same file — do Task 10 first anyway since tasks are done in numeric order).
-
-**File to edit:** `src/app/animals/[id]/page.tsx`
-
-**Current code:**
-
-```ts
-  const medicationRegimens = await prisma.medicationRegimen.findMany({
-    where: { animalId: id, OR: [{ endDate: null }, { endDate: { gte: today } }] },
-    include: { logs: { where: { date: { gte: today, lt: tomorrow } } } },
-    orderBy: { drugName: "asc" }
-  })
-```
-
-**Replace with:**
-
-```ts
-  const medicationRegimens = await prisma.medicationRegimen.findMany({
-    where: { animalId: id, OR: [{ endDate: null }, { endDate: { gte: today } }] },
-    include: { logs: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
-    orderBy: { drugName: "asc" }
-  })
-```
-
-**Boundaries:** only this query.
-
-**Success check:**
-```
-grep -n "logs: { where: { date: { gte: today, lt: tomorrow } }, orderBy" src/app/animals/\[id\]/page.tsx
-```
-should print one line.
-
----
-
-## Task 13 — Add `orderBy` to the medication-log include in `src/app/dashboard/page.tsx`
-
-**File to edit:** `src/app/dashboard/page.tsx`
-
-**Current code:**
-
-```ts
-  const medicationRegimens = await prisma.medicationRegimen.findMany({
-    where: { animalId: { in: animalIds }, OR: [{ endDate: null }, { endDate: { gte: today } }] },
-    include: { logs: { where: { date: { gte: today, lt: tomorrow } } } },
-    orderBy: { drugName: "asc" }
-  })
-```
-
-**Replace with:**
-
-```ts
-  const medicationRegimens = await prisma.medicationRegimen.findMany({
-    where: { animalId: { in: animalIds }, OR: [{ endDate: null }, { endDate: { gte: today } }] },
-    include: { logs: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
-    orderBy: { drugName: "asc" }
-  })
-```
-
-**Boundaries:** only this query.
-
-**Success check:**
-```
-grep -n "logs: { where: { date: { gte: today, lt: tomorrow } }, orderBy" src/app/dashboard/page.tsx
-```
-should print one line.
-
----
-
-## Task 14 — Add `orderBy` to the feeding-override include in `src/app/feed-board/page.tsx`
-
-**File to edit:** `src/app/feed-board/page.tsx`
-
-**Current code** (this is the `loadFeedingBaselines` helper function near the top of the file):
-
-```ts
-async function loadFeedingBaselines(animalIds: string[], shift: FeedBoardShift, today: Date, tomorrow: Date) {
-  return prisma.feedingBaseline.findMany({
-    where: { animalId: { in: animalIds }, shift },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } } } },
-    orderBy: [{ feedType: { name: "asc" } }]
-  })
-}
-```
-
-**Replace with:**
-
-```ts
-async function loadFeedingBaselines(animalIds: string[], shift: FeedBoardShift, today: Date, tomorrow: Date) {
-  return prisma.feedingBaseline.findMany({
-    where: { animalId: { in: animalIds }, shift },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
-    orderBy: [{ feedType: { name: "asc" } }]
-  })
-}
-```
-
-**Boundaries:** only this function. Do not touch anything else in this file — it's a large file with a lot of JSX below this function; none of it is part of this task.
-
-**Success check:**
-```
-grep -n "overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy" src/app/feed-board/page.tsx
-```
-should print one line.
-
-**After finishing Tasks 10–14 together**, run this one combined check:
-```
-grep -rn "overrides: { where: { date: { gte: today, lt: tomorrow } } }$" src/app
-grep -rn "logs: { where: { date: { gte: today, lt: tomorrow } } }$" src/app
-```
-Both commands should print **nothing** (no matches) — every remaining occurrence of these patterns should now have the added `, orderBy: { createdAt: "desc" }` and therefore not match a line ending exactly in `} }`.
-
----
-
-## Task 15 — Only revalidate the layout when a chat message is pinned
-
-**File to edit:** `src/app/chat/actions.ts`
-
-**Why:** the comment already in this file explains that revalidating the whole app layout is only needed so a newly pinned message shows up in the alert banner right away — but the code currently does it for every chat message, pinned or not.
-
-**Current code:**
-
-```ts
-  // A pinned message needs the global banner (rendered from src/app/AlertBanner.tsx, inside
-  // the root layout) to reflect it immediately — but redirect() only guarantees a fresh render
-  // of the page segment it targets, not ancestor layout segments shared across the whole app.
-  // Every prior Server Action in this codebase only ever needed its own destination page fresh
-  // (CLAUDE.md's existing actions all redirect within a single route's own data); this is the
-  // first one whose write needs to invalidate something rendered above it in the tree, so
-  // revalidatePath("/", "layout") — Next's documented way to revalidate every route sharing a
-  // layout — is needed here specifically, not because every action needs this going forward.
-  revalidatePath("/", "layout")
-
-  redirect(`/chat?channelId=${channelId}`)
-```
-
-**Replace with:**
-
-```ts
-  // A pinned message needs the global banner (rendered from src/app/AlertBanner.tsx, inside
-  // the root layout) to reflect it immediately — but redirect() only guarantees a fresh render
-  // of the page segment it targets, not ancestor layout segments shared across the whole app.
-  // Every prior Server Action in this codebase only ever needed its own destination page fresh
-  // (CLAUDE.md's existing actions all redirect within a single route's own data); this is the
-  // first one whose write needs to invalidate something rendered above it in the tree, so
-  // revalidatePath("/", "layout") — Next's documented way to revalidate every route sharing a
-  // layout — is needed here specifically, not because every action needs this going forward.
-  // Only pinned messages affect the banner, so only they need to pay for the wider revalidation.
-  if (pinned) {
-    revalidatePath("/", "layout")
-  }
-
-  redirect(`/chat?channelId=${channelId}`)
-```
-
-**Boundaries:** only this block at the end of `postChatMessage`. Do not touch the `prisma.chatMessage.create(...)` call above it, and do not touch the import line (`revalidatePath` is still used, just conditionally, so the import stays exactly as it is).
-
-**Success check:**
-```
-grep -n "if (pinned) {" src/app/chat/actions.ts
-```
-should print one line, and the line right after it (or within the next 2 lines) should be `revalidatePath("/", "layout")`.
-
----
-
-## Task 16 — Sync `CLAUDE.md`'s tracked-models list with the actual code
-
-**File to edit:** `CLAUDE.md`
-
-**Why:** `src/lib/prisma.ts`'s `trackedModels` array (the actual source of truth) has 17 entries, but `CLAUDE.md`'s own reference list under "ChangeLog Implementation" only lists 14 — it's missing `Shift`, `AnimalRelationship`, and `ShiftReport`, even though other parts of the same `CLAUDE.md` file already describe those three as tracked. This task only fixes the one out-of-date list; it does not change any code.
-
-**Current code** (this is a sentence inside the "ChangeLog Implementation" section of `CLAUDE.md` — search for it, don't guess the surrounding line numbers since they may have shifted):
-
-```
-Tracked models (per `CONTEXT.md` §4): `Animal`, `Volunteer`, `FeedingBaseline`, `FeedingOverride`, `MedicationRegimen`, `MedicationLog`, `CareEntry`, `HealthIssue`, `WeightEntry`, `AnimalMetric`, `Placement`, `CredentialRecord`, `CheckIn`, `VolunteerTagAssignment`. Add new models to the `trackedModels` array in `src/lib/prisma.ts` when they're introduced, not to a separate list — there is only one source of truth for what's tracked.
-```
-
-**Replace with:**
-
-```
-Tracked models (per `CONTEXT.md` §4): `Animal`, `Volunteer`, `FeedingBaseline`, `FeedingOverride`, `MedicationRegimen`, `MedicationLog`, `CareEntry`, `HealthIssue`, `WeightEntry`, `AnimalMetric`, `Placement`, `CredentialRecord`, `CheckIn`, `VolunteerTagAssignment`, `Shift`, `AnimalRelationship`, `ShiftReport`. Add new models to the `trackedModels` array in `src/lib/prisma.ts` when they're introduced, not to a separate list — there is only one source of truth for what's tracked.
-```
-
-Only the list of backtick-quoted model names changed (three names — `` `Shift` ``, `` `AnimalRelationship` ``, `` `ShiftReport` `` — were added before the final period-ending sentence). The rest of the sentence is identical.
-
-**Boundaries:** this is a Markdown documentation file, not code. Only change the one sentence shown. Do not reformat, reword, or touch any other part of `CLAUDE.md`.
-
-**Success check:**
-```
-grep -n "Tracked models (per \`CONTEXT.md\` §4)" CLAUDE.md
-```
-The matching line should contain all 17 model names, including `` `Shift` ``, `` `AnimalRelationship` ``, and `` `ShiftReport` ``.
-
----
-
-## Final combined check (run once after all 16 tasks are done)
-
-```
-grep -rc "prisma.shift.upsert" src/app src/lib
-```
-Every result should be `0`.
-
-```
-grep -rn "overrides: { where: { date: { gte: today, lt: tomorrow } } }$" src/app
-grep -rn "logs: { where: { date: { gte: today, lt: tomorrow } } }$" src/app
-```
-Both should print nothing.
-
-```
-grep -c "findOrCreateShift" src/lib/checkin.ts
-```
-Should be at least `2` (the function definition plus its use inside `performKioskToggle`).
-
-If a Postgres test database is available in your environment (see the project's `README.md` / `CLAUDE.md` Testing section for `npm run test:db:reset`), run:
-```
-npm run test:unit
-```
-No test should newly fail because of these changes. If a test database is not available, the `grep`/`tsc` checks above are the best available verification — do not attempt to start Docker or provision a database yourself as part of these tasks.
+## Pre-flight checklist for whoever authors the task list (Claude, most likely)
+
+Before handing a task list to a local model, for **each** task that changes runtime behavior (not pure syntax/doc edits):
+
+- [ ] Does this replace a DB operation that had an implicit guarantee (atomicity, ordering, a unique-constraint upsert, a transaction)? If yes, does the replacement preserve it, or does it need explicit error handling to?
+- [ ] Is the "Current code" block copied character-for-character from the actual current file (not from memory of what it should look like)?
+- [ ] Does the success check actually distinguish "did it right" from "did it wrong" — not just "did *something*"?
+- [ ] Is every cross-task dependency named explicitly, including the "this task leaves a known issue for a later task to fix" case?
+- [ ] Would a human reviewer, reading only this one task in isolation with no other context, be able to verify it's correct? If the answer requires knowledge from three other files, the task isn't actually independent — split it or add that context inline.
+
+## Post-run checklist (for whoever reviews qwen's — or any local model's — output)
+
+- [ ] Diff every touched file against the task's own "Replace with" block — exact match, not "close enough."
+- [ ] Confirm nothing outside the named boundaries changed (`git diff --stat` file list should match the task list's file list exactly).
+- [ ] Run typecheck + lint across every touched file.
+- [ ] Re-examine each task's underlying design for the atomicity/ordering/error-handling class of bug described above — this is squarely on the reviewer, not the local model, to catch.
+- [ ] Run the test suite if a DB is available; note explicitly if it wasn't and this step was skipped.

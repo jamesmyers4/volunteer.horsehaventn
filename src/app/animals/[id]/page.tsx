@@ -37,7 +37,7 @@ export default async function AnimalDetailPage({ params }: { params: Promise<{ i
 
   const feedingBaselines = await prisma.feedingBaseline.findMany({
     where: { animalId: id },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } } } },
+    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
     orderBy: [{ shift: "asc" }, { feedType: { name: "asc" } }]
   })
 
@@ -45,7 +45,7 @@ export default async function AnimalDetailPage({ params }: { params: Promise<{ i
 
   const medicationRegimens = await prisma.medicationRegimen.findMany({
     where: { animalId: id, OR: [{ endDate: null }, { endDate: { gte: today } }] },
-    include: { logs: { where: { date: { gte: today, lt: tomorrow } } } },
+    include: { logs: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
     orderBy: { drugName: "asc" }
   })
 

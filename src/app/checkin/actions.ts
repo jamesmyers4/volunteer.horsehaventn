@@ -56,11 +56,7 @@ export async function setShiftActualTimes(date: string, shiftType: "AM" | "PM", 
   const actualStartTime = String(formData.get("actualStartTime"))
   const actualEndTime = String(formData.get("actualEndTime"))
 
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
+  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
 
   await withChangeLog(prisma, actor.id, "Shift actual time override").shift.update({
     where: { id: shift.id },

@@ -22,7 +22,7 @@ export default async function DashboardPage() {
 
   const feedingBaselines = await prisma.feedingBaseline.findMany({
     where: { animalId: { in: animalIds } },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } } } },
+    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
     orderBy: [{ shift: "asc" }, { feedType: { name: "asc" } }]
   })
   const feedingByAnimal = new Map<string, typeof feedingBaselines>()
@@ -34,7 +34,7 @@ export default async function DashboardPage() {
 
   const medicationRegimens = await prisma.medicationRegimen.findMany({
     where: { animalId: { in: animalIds }, OR: [{ endDate: null }, { endDate: { gte: today } }] },
-    include: { logs: { where: { date: { gte: today, lt: tomorrow } } } },
+    include: { logs: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
     orderBy: { drugName: "asc" }
   })
   const medicationByAnimal = new Map<string, typeof medicationRegimens>()

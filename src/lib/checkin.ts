@@ -93,11 +93,7 @@ export async function performKioskToggle(code: string, now: Date = new Date()): 
   const shiftType = determineShiftTypeForNow(templates, farmSettings.activeSeason, now)
   const date = startOfDay(now)
 
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date, type: shiftType } },
-    update: {},
-    create: { date, type: shiftType }
-  })
+  const shift = await findOrCreateShift(volunteer.id, date, shiftType)
 
   const workType = await prisma.workType.findFirst({ where: { name: DEFAULT_KIOSK_WORK_TYPE, active: true } })
   if (!workType) throw new Error(`No "${DEFAULT_KIOSK_WORK_TYPE}" WorkType configured`)

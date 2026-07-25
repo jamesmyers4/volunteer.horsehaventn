@@ -5,6 +5,7 @@ import { requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma, withChangeLog } from "@/lib/prisma"
 import { canSubmitShiftReport } from "@/lib/shiftReport"
 import type { ShiftTypeValue } from "@/lib/shifts"
+import { findOrCreateShift } from "@/lib/checkin"
 
 /**
  * V3.md Session 5: only the Shift's occurrence-scoped assignedLeadId or global ADMIN may
@@ -18,13 +19,10 @@ import type { ShiftTypeValue } from "@/lib/shifts"
 export async function submitShiftReport(date: string, shiftType: ShiftTypeValue, formData: FormData) {
   const actor = await requireNonKioskVolunteer()
 
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
+  const existingShift = await prisma.shift.findUnique({ where: { date_type: { date: new Date(date), type: shiftType } } })
+  if (!canSubmitShiftReport(actor, existingShift)) throw new Error("Not authorized")
 
-  if (!canSubmitShiftReport(actor, shift)) throw new Error("Not authorized")
+  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
 
   const existing = await prisma.shiftReport.findUnique({ where: { shiftId: shift.id } })
   if (existing) throw new Error("A shift report has already been submitted for this shift")

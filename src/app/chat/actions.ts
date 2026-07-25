@@ -48,7 +48,10 @@ export async function postChatMessage(formData: FormData) {
   // first one whose write needs to invalidate something rendered above it in the tree, so
   // revalidatePath("/", "layout") — Next's documented way to revalidate every route sharing a
   // layout — is needed here specifically, not because every action needs this going forward.
-  revalidatePath("/", "layout")
+  // Only pinned messages affect the banner, so only they need to pay for the wider revalidation.
+  if (pinned) {
+    revalidatePath("/", "layout")
+  }
 
   redirect(`/chat?channelId=${channelId}`)
 }

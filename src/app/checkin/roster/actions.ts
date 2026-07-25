@@ -7,6 +7,7 @@ import { getFarmSettings } from "@/lib/farmSettings"
 import { resolveShiftTimesForOccurrence, type ShiftTypeValue } from "@/lib/shifts"
 import { maybeSetFirstShiftDate } from "@/lib/checkin"
 import { canManageShiftRoster } from "@/lib/shiftRoster"
+import { findOrCreateShift } from "@/lib/checkin"
 
 // Same default WorkType src/lib/checkin.ts's kiosk toggle uses — a bulk roster submission
 // is, by definition, the standing regular-shift case (walk-ons added to the list are still
@@ -26,11 +27,7 @@ export async function assignShiftLead(date: string, shiftType: ShiftTypeValue, f
   const rawLeadId = formData.get("assignedLeadId")
   const assignedLeadId = rawLeadId && String(rawLeadId).length > 0 ? String(rawLeadId) : null
 
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
+  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
 
   await withChangeLog(prisma, actor.id, "Occurrence shift lead assignment").shift.update({
     where: { id: shift.id },
@@ -51,13 +48,10 @@ export async function assignShiftLead(date: string, shiftType: ShiftTypeValue, f
 export async function submitRosterAttendance(date: string, shiftType: ShiftTypeValue, formData: FormData) {
   const actor = await requireNonKioskVolunteer()
 
-  const shift = await prisma.shift.upsert({
-    where: { date_type: { date: new Date(date), type: shiftType } },
-    update: {},
-    create: { date: new Date(date), type: shiftType }
-  })
+  const existingShift = await prisma.shift.findUnique({ where: { date_type: { date: new Date(date), type: shiftType } } })
+  if (!canManageShiftRoster(actor, existingShift)) throw new Error("Not authorized")
 
-  if (!canManageShiftRoster(actor, shift)) throw new Error("Not authorized")
+  const shift = await findOrCreateShift(actor.id, new Date(date), shiftType)
 
   const presentVolunteerIds = Array.from(new Set(formData.getAll("presentVolunteerIds").map(String).filter(Boolean)))
   if (presentVolunteerIds.length === 0) {

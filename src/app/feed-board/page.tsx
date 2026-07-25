@@ -8,7 +8,7 @@ import AutoRefresh from "@/app/AutoRefresh"
 async function loadFeedingBaselines(animalIds: string[], shift: FeedBoardShift, today: Date, tomorrow: Date) {
   return prisma.feedingBaseline.findMany({
     where: { animalId: { in: animalIds }, shift },
-    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } } } },
+    include: { feedType: true, overrides: { where: { date: { gte: today, lt: tomorrow } }, orderBy: { createdAt: "desc" } } },
     orderBy: [{ feedType: { name: "asc" } }]
   })
 }
