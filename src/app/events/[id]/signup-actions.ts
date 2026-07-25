@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { requireNonKioskVolunteer } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@/generated/prisma/client"
 import { checkEventEligibility } from "@/lib/events"
 import { sendEmail } from "@/lib/email"
 
@@ -46,17 +47,27 @@ export async function signupForEvent(eventId: string) {
   const eligible = await checkEventEligibility(volunteer.id, { requiredTagId: event.requiredTagId, requiredTier: event.requiredTier })
   if (!eligible) throw new Error("Not eligible for this event")
 
-  const existing = await prisma.eventSignup.findUnique({ where: { eventId_volunteerId: { eventId, volunteerId: volunteer.id } } })
-  if (existing && existing.status !== "CANCELLED") throw new Error("Already signed up for this event")
+  // Serializable transaction closes the check-then-act race on capacity: without it, two
+  // volunteers racing for the last seat could both read confirmedCount < capacity and both
+  // land CONFIRMED. Under SERIALIZABLE, Postgres detects the conflict and aborts one side
+  // (surfaced as a Prisma P2034 error) instead of silently overbooking.
+  const status = await prisma.$transaction(
+    async (tx) => {
+      const existing = await tx.eventSignup.findUnique({ where: { eventId_volunteerId: { eventId, volunteerId: volunteer.id } } })
+      if (existing && existing.status !== "CANCELLED") throw new Error("Already signed up for this event")
 
-  const confirmedCount = await prisma.eventSignup.count({ where: { eventId, status: "CONFIRMED" } })
-  const status = event.capacity === null || confirmedCount < event.capacity ? "CONFIRMED" : "WAITLISTED"
+      const confirmedCount = await tx.eventSignup.count({ where: { eventId, status: "CONFIRMED" } })
+      const nextStatus = event.capacity === null || confirmedCount < event.capacity ? "CONFIRMED" : "WAITLISTED"
 
-  if (existing) {
-    await prisma.eventSignup.update({ where: { id: existing.id }, data: { status, signedUpAt: new Date(), canceledAt: null } })
-  } else {
-    await prisma.eventSignup.create({ data: { eventId, volunteerId: volunteer.id, status } })
-  }
+      if (existing) {
+        await tx.eventSignup.update({ where: { id: existing.id }, data: { status: nextStatus, signedUpAt: new Date(), canceledAt: null } })
+      } else {
+        await tx.eventSignup.create({ data: { eventId, volunteerId: volunteer.id, status: nextStatus } })
+      }
+      return nextStatus
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+  )
 
   const eventWithTargets = await loadEventForNotify(eventId)
   const statusLabel = status === "CONFIRMED" ? "confirmed" : "waitlisted"

@@ -21,6 +21,15 @@ describe("getCurrentVolunteer", () => {
     expect(result?.id).toBe(volunteer.id)
     expect(result?.name).toBe("Jamie Rivera")
   })
+
+  // Open TODO item: status was previously never enforced, only used to filter read queries.
+  // INACTIVE is now treated identically to "no matching Volunteer row" — a still-valid Clerk
+  // session for a deactivated volunteer must not resolve to a usable Volunteer anywhere.
+  it("returns null for a volunteer whose status is INACTIVE, even with a valid Clerk session", async () => {
+    await createVolunteer({ clerkId: "clerk_inactive", status: "INACTIVE" })
+    mockSignedInAs("clerk_inactive")
+    expect(await getCurrentVolunteer()).toBeNull()
+  })
 })
 
 describe("requireVolunteer", () => {
@@ -38,6 +47,12 @@ describe("requireVolunteer", () => {
     const volunteer = await createVolunteer({ clerkId: "clerk_def" })
     mockSignedInAs("clerk_def")
     await expect(requireVolunteer()).resolves.toMatchObject({ id: volunteer.id })
+  })
+
+  it("throws Not authenticated (not some other error) for an INACTIVE volunteer with a valid session", async () => {
+    await createVolunteer({ clerkId: "clerk_inactive_rv", status: "INACTIVE" })
+    mockSignedInAs("clerk_inactive_rv")
+    await expect(requireVolunteer()).rejects.toThrow("Not authenticated")
   })
 })
 

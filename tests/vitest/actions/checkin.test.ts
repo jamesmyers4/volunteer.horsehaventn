@@ -240,6 +240,25 @@ describe("updateOwnCheckIn", () => {
     await captureRedirect(() => updateOwnCheckIn(checkIn.id, formData({ checkInTime: "08:15", checkOutTime: "12:15" })))
 
     const updated = await prisma.checkIn.findUniqueOrThrow({ where: { id: checkIn.id } })
-    expect(updated.checkInAt.getTime()).toBe(new Date("2026-07-23T08:15:00").getTime())
+    // Explicit "Z" — checkInAt is parsed as a UTC wall-clock string (src/app/checkin/actions.ts),
+    // so this comparison must be too, or it'd only pass when this process happens to run in UTC.
+    expect(updated.checkInAt.getTime()).toBe(new Date("2026-07-23T08:15:00Z").getTime())
+  })
+
+  // Open TODO item: previously parsed in whatever timezone the process runs in — this
+  // deliberately runs the assertion the way the fix reasons about it, not against toISOString()
+  // (which would mask the bug the same way it did before, since it always renders in UTC
+  // regardless of how the input was parsed).
+  it("parses checkInTime/checkOutTime as explicit UTC, not the server process's local timezone", async () => {
+    const volunteer = await createVolunteer({ clerkId: "clerk_uoc_tz" })
+    mockSignedInAs("clerk_uoc_tz")
+    const workType = await getWorkType()
+    await captureRedirect(() =>
+      submitCheckIn(formData({ date: "2026-07-24", shiftType: "AM", workTypeId: workType.id, checkInTime: "08:00", checkOutTime: "12:00" }))
+    )
+
+    const checkIn = await prisma.checkIn.findFirstOrThrow({ where: { volunteerId: volunteer.id } })
+    expect(checkIn.checkInAt.getTime()).toBe(new Date("2026-07-24T08:00:00Z").getTime())
+    expect(checkIn.checkOutAt?.getTime()).toBe(new Date("2026-07-24T12:00:00Z").getTime())
   })
 })

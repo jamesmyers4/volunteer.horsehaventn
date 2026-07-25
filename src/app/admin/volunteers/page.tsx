@@ -1,9 +1,10 @@
 import Link from "next/link"
 import { requireRole } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { updateVolunteerRole, updateCanScheduleEvents } from "./actions"
+import { updateVolunteerRole, updateCanScheduleEvents, updateVolunteerStatus } from "./actions"
 
 const ROLE_OPTIONS = ["ADMIN", "SHIFT_LEAD", "VOLUNTEER", "GUEST", "KIOSK"] as const
+const STATUS_OPTIONS = ["ACTIVE", "INACTIVE"] as const
 
 async function checkAccess() {
   try {
@@ -43,6 +44,7 @@ export default async function AdminVolunteersPage() {
           <tr className="border-b">
             <th className="py-2">Name</th>
             <th className="py-2">Role</th>
+            <th className="py-2">Status</th>
             <th className="py-2">Can schedule events</th>
             <th className="py-2">Tier</th>
             <th className="py-2">Blue released</th>
@@ -59,6 +61,20 @@ export default async function AdminVolunteersPage() {
                     {ROLE_OPTIONS.map((role) => (
                       <option key={role} value={role}>
                         {role}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" className="rounded border px-2 py-1 text-xs">
+                    Save
+                  </button>
+                </form>
+              </td>
+              <td className="py-2">
+                <form action={updateVolunteerStatus.bind(null, volunteer.id)} className="flex items-center gap-2">
+                  <select name="status" defaultValue={volunteer.status} className="rounded border px-2 py-1 text-xs">
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
                       </option>
                     ))}
                   </select>

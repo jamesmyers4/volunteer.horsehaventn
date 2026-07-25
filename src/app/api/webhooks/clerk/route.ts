@@ -19,9 +19,12 @@ export async function POST(req: NextRequest) {
     const existing = email ? await prisma.volunteer.findFirst({ where: { email, clerkId: null } }) : null
 
     if (existing) {
+      // Also restores status: ACTIVE — a previously-deactivated volunteer signing up again
+      // in Clerk should be able to log in, not silently stay INACTIVE (now enforced for
+      // real by getCurrentVolunteer, see src/lib/auth.ts).
       await withChangeLog(prisma, existing.id, "Linked Clerk account to existing volunteer record").volunteer.update({
         where: { id: existing.id },
-        data: { clerkId: id }
+        data: { clerkId: id, status: "ACTIVE" }
       })
     } else {
       await withChangeLog(prisma, "clerk-webhook", "New volunteer self-signup").volunteer.create({

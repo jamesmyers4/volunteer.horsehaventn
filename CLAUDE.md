@@ -71,6 +71,8 @@ Logs both `CREATE` (one row per field, `oldValue: null`) and `UPDATE` (field-lev
 
 `SHIFT_LEAD` write access to `WeightEntry`/`AnimalMetric` (weight, Henneke BCS, height) was an explicit call from James when Metrics was built, not an inference — mirrors the `CareEntry` reasoning (routine observation logged during a shift, e.g. at a weigh-in) rather than the `FeedingBaseline`/`MedicationRegimen` Admin-only pattern.
 
+`AnimalPhoto` upload/reprimary (`src/app/api/animals/[id]/photos/route.ts`) is gated only by `requireNonKioskVolunteer()` — any signed-in `VOLUNTEER`/`SHIFT_LEAD`/`ADMIN`/`GUEST` can upload or reprimary a photo for **any** animal, not scoped by role or ownership. Confirmed intentional (2026-07-25): anyone at the barn can snap a photo, and there's no legal-defensibility angle on photos the way there is on core `Animal`/medical/weight records. Documented here now; not previously in this table.
+
 ## Repo Layout — What Already Exists
 
 **Terminology note (July 2026):** the core entity was renamed `Horse` → `Animal` (schema, migration, all routes/actions, both test suites) to accommodate mules, donkeys, minis, ponies, and non-equine animals (a species enum — `HORSE | DONKEY | MULE | MINI_HORSE | PONY | CAT | OTHER` — was added at the same time; every pre-existing record defaulted to `HORSE` except Binx, the barn cat, matched by name and confirmed with James before backfilling to `CAT`). Routes moved from `/horses` to `/animals`; user-visible copy (nav links, page headings, button text) deliberately still says "Horse"/"Horses" since that's what staff call it day to day — only the underlying model, file paths, and route segments changed. The paths below already reflect the renamed state.

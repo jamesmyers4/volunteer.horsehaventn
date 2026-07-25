@@ -3,10 +3,19 @@ import { prisma } from "./prisma"
 
 export type Role = "ADMIN" | "SHIFT_LEAD" | "VOLUNTEER" | "GUEST" | "KIOSK"
 
+// INACTIVE is treated identically to "no matching Volunteer row" — every caller downstream
+// (requireVolunteer, requireRole, requireNonKioskVolunteer, and the pages that call this
+// directly for read-only rendering like NavBar/AlertBanner) already handles a null volunteer
+// correctly, so this is the one place that needs to know about status at all. A deactivated
+// volunteer's Clerk session may still be valid (status and Clerk account deletion are no
+// longer assumed to happen together — see the admin-facing updateVolunteerStatus action), so
+// this can't rely on Clerk revocation alone the way it used to.
 export async function getCurrentVolunteer() {
   const { isAuthenticated, userId } = await auth()
   if (!isAuthenticated || !userId) return null
-  return prisma.volunteer.findUnique({ where: { clerkId: userId } })
+  const volunteer = await prisma.volunteer.findUnique({ where: { clerkId: userId } })
+  if (!volunteer || volunteer.status !== "ACTIVE") return null
+  return volunteer
 }
 
 export async function requireVolunteer() {

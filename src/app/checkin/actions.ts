@@ -15,8 +15,12 @@ export async function submitCheckIn(formData: FormData) {
   const checkOutTime = String(formData.get("checkOutTime"))
   const notes = formData.get("notes") ? String(formData.get("notes")) : undefined
 
-  const checkInAt = new Date(`${date}T${checkInTime}:00`)
-  const checkOutAt = new Date(`${date}T${checkOutTime}:00`)
+  // Explicit UTC marker (Z) matches Shift.date's own new Date(date) UTC-string convention two
+  // lines below — without it, this parses in whatever timezone the process runs in, which is
+  // masked in production (Vercel serverless runs TZ=UTC) but bites on a non-UTC dev machine or
+  // CI runner, especially near midnight. No production behavior change, since prod is already UTC.
+  const checkInAt = new Date(`${date}T${checkInTime}:00Z`)
+  const checkOutAt = new Date(`${date}T${checkOutTime}:00Z`)
 
   const shift = await findOrCreateShift(volunteer.id, new Date(date), shiftType)
 
@@ -86,8 +90,8 @@ export async function updateOwnCheckIn(checkInId: string, formData: FormData) {
   await withChangeLog(prisma, volunteer.id, "Volunteer self-edit of own check-in").checkIn.update({
     where: { id: checkInId },
     data: {
-      checkInAt: new Date(`${dateString}T${checkInTime}:00`),
-      checkOutAt: new Date(`${dateString}T${checkOutTime}:00`),
+      checkInAt: new Date(`${dateString}T${checkInTime}:00Z`),
+      checkOutAt: new Date(`${dateString}T${checkOutTime}:00Z`),
       notes
     }
   })

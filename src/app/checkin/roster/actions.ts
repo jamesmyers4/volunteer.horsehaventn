@@ -70,8 +70,10 @@ export async function submitRosterAttendance(date: string, shiftType: ShiftTypeV
   const checkOutTime = checkOutTimeInput && String(checkOutTimeInput).length > 0 ? String(checkOutTimeInput) : resolved?.end
   if (!checkInTime || !checkOutTime) throw new Error("No resolved shift time available — enter times directly")
 
-  const checkInAt = new Date(`${date}T${checkInTime}:00`)
-  const checkOutAt = new Date(`${date}T${checkOutTime}:00`)
+  // Explicit UTC marker (Z), matching submitCheckIn's own fix in src/app/checkin/actions.ts —
+  // see that file's comment for why.
+  const checkInAt = new Date(`${date}T${checkInTime}:00Z`)
+  const checkOutAt = new Date(`${date}T${checkOutTime}:00Z`)
 
   const [existingCheckIns, workType] = await Promise.all([
     prisma.checkIn.findMany({ where: { shiftId: shift.id, volunteerId: { in: presentVolunteerIds } } }),

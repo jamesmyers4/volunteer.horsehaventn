@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { describe, it, expect } from "vitest"
 import { createEventCategory, updateEventCategory } from "@/app/admin/event-categories/actions"
-import { updateVolunteerRole, updateCanScheduleEvents } from "@/app/admin/volunteers/actions"
+import { updateVolunteerRole, updateCanScheduleEvents, updateVolunteerStatus } from "@/app/admin/volunteers/actions"
 import { prisma } from "@/lib/prisma"
 import { mockSignedInAs } from "../helpers/auth-mock"
 import { createVolunteer } from "../helpers/factories"
@@ -135,5 +135,56 @@ describe("updateCanScheduleEvents", () => {
 
     const updated = await prisma.volunteer.findUniqueOrThrow({ where: { id: target.id } })
     expect(updated.canScheduleEvents).toBe(false)
+  })
+})
+
+describe("updateVolunteerStatus", () => {
+  it("is Admin-only — a Shift Lead is rejected and nothing changes", async () => {
+    const target = await createVolunteer({ status: "ACTIVE" })
+    await createVolunteer({ clerkId: "clerk_lead_uvs", role: "SHIFT_LEAD" })
+    mockSignedInAs("clerk_lead_uvs")
+
+    await expect(updateVolunteerStatus(target.id, formData({ status: "INACTIVE" }))).rejects.toThrow("Not authorized")
+    const unchanged = await prisma.volunteer.findUniqueOrThrow({ where: { id: target.id } })
+    expect(unchanged.status).toBe("ACTIVE")
+  })
+
+  it("lets an Admin deactivate a volunteer, capturing the change in ChangeLog", async () => {
+    const target = await createVolunteer({ status: "ACTIVE" })
+    const admin = await createVolunteer({ clerkId: "clerk_admin_uvs", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_uvs")
+
+    const url = await captureRedirect(() => updateVolunteerStatus(target.id, formData({ status: "INACTIVE" })))
+
+    expect(url).toBe("/admin/volunteers")
+    const updated = await prisma.volunteer.findUniqueOrThrow({ where: { id: target.id } })
+    expect(updated.status).toBe("INACTIVE")
+
+    const entry = await prisma.changeLog.findFirstOrThrow({ where: { entityType: "Volunteer", entityId: target.id, field: "status" } })
+    expect(entry.oldValue).toBe("ACTIVE")
+    expect(entry.newValue).toBe("INACTIVE")
+    expect(entry.changedBy).toBe(admin.id)
+  })
+
+  it("lets an Admin reactivate a volunteer", async () => {
+    const target = await createVolunteer({ status: "INACTIVE" })
+    await createVolunteer({ clerkId: "clerk_admin_uvs2", role: "ADMIN" })
+    mockSignedInAs("clerk_admin_uvs2")
+
+    await captureRedirect(() => updateVolunteerStatus(target.id, formData({ status: "ACTIVE" })))
+
+    const updated = await prisma.volunteer.findUniqueOrThrow({ where: { id: target.id } })
+    expect(updated.status).toBe("ACTIVE")
+  })
+
+  // Status has no other in-app recovery path today, so an accidental self-deactivation would
+  // require going straight to the database to undo — blocked outright instead.
+  it("blocks an Admin from deactivating their own account", async () => {
+    const admin = await createVolunteer({ clerkId: "clerk_admin_uvs3", role: "ADMIN", status: "ACTIVE" })
+    mockSignedInAs("clerk_admin_uvs3")
+
+    await expect(updateVolunteerStatus(admin.id, formData({ status: "INACTIVE" }))).rejects.toThrow("Cannot deactivate your own account")
+    const unchanged = await prisma.volunteer.findUniqueOrThrow({ where: { id: admin.id } })
+    expect(unchanged.status).toBe("ACTIVE")
   })
 })

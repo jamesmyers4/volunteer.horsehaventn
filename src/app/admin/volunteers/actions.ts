@@ -37,3 +37,26 @@ export async function updateCanScheduleEvents(volunteerId: string, formData: For
 
   redirect("/admin/volunteers")
 }
+
+// Previously the only way Volunteer.status ever changed was the Clerk webhook (ACTIVE on
+// signup, INACTIVE on Clerk account deletion) — there was no in-app path to deactivate
+// someone without deleting their Clerk account outright, or to reactivate them short of
+// having them sign up again. Now that getCurrentVolunteer() actually enforces status
+// (src/lib/auth.ts), an admin needs a real way to flip it. Blocks deactivating your own
+// account — status has no other in-app recovery path, so a self-lockout would require going
+// straight to the database to undo.
+export async function updateVolunteerStatus(volunteerId: string, formData: FormData) {
+  const actor = await requireRole(["ADMIN"])
+  const status = String(formData.get("status")) as "ACTIVE" | "INACTIVE"
+
+  if (status === "INACTIVE" && volunteerId === actor.id) {
+    throw new Error("Cannot deactivate your own account")
+  }
+
+  await withChangeLog(prisma, actor.id).volunteer.update({
+    where: { id: volunteerId },
+    data: { status }
+  })
+
+  redirect("/admin/volunteers")
+}

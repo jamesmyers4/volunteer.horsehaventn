@@ -79,6 +79,27 @@ describe("POST /api/webhooks/clerk", () => {
       expect(created.name).toBe("Fresh Signup")
     })
 
+    it("restores status ACTIVE when re-linking a previously-deactivated volunteer's fresh signup", async () => {
+      const existing = await prisma.volunteer.create({
+        data: { name: "Returning Volunteer", email: "returning@example.com", role: "VOLUNTEER", status: "INACTIVE", clerkId: null }
+      })
+
+      verifyWebhookMock.mockResolvedValue(
+        userEvent("user.created", {
+          id: "clerk_returning_signup",
+          email_addresses: [{ email_address: "returning@example.com" }],
+          first_name: "Returning",
+          last_name: "Volunteer"
+        })
+      )
+
+      await POST(fakeReq())
+
+      const relinked = await prisma.volunteer.findUniqueOrThrow({ where: { id: existing.id } })
+      expect(relinked.clerkId).toBe("clerk_returning_signup")
+      expect(relinked.status).toBe("ACTIVE")
+    })
+
     it("does not link to a pre-entered row that already has a clerkId (avoids double-linking)", async () => {
       await createVolunteer({ email: "already-linked@example.com", clerkId: "clerk_original" })
 

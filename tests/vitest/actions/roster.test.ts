@@ -279,12 +279,12 @@ describe("submitRosterAttendance", () => {
     await captureRedirect(() => submitRosterAttendance(REFERENCE_DATE_STRING, "AM", fd))
 
     const checkIn = await prisma.checkIn.findFirstOrThrow({ where: { volunteerId: volunteer.id } })
-    // Seeded STANDARD AM window (prisma/seed.ts): 09:00-11:00. Compared as full Date
-    // equality (not a UTC ISO-string slice) since `new Date("...T09:00:00")` parses in the
-    // local timezone, same as the app's own construction — matches the existing convention
-    // in tests/vitest/actions/checkin.test.ts.
-    expect(checkIn.checkInAt.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T09:00:00`).getTime())
-    expect(checkIn.checkOutAt?.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T11:00:00`).getTime())
+    // Seeded STANDARD AM window (prisma/seed.ts): 09:00-11:00. checkInAt/checkOutAt are parsed
+    // as explicit UTC by the production code (src/app/checkin/roster/actions.ts) — matched here
+    // with a "Z" suffix, or this comparison would only hold when this test process happens to
+    // run in UTC.
+    expect(checkIn.checkInAt.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T09:00:00Z`).getTime())
+    expect(checkIn.checkOutAt?.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T11:00:00Z`).getTime())
   })
 
   it("a Shift-level actualStartTime/actualEndTime override wins over the template's seasonal default", async () => {
@@ -299,8 +299,8 @@ describe("submitRosterAttendance", () => {
     await captureRedirect(() => submitRosterAttendance(REFERENCE_DATE_STRING, "AM", formData({ presentVolunteerIds: volunteer.id })))
 
     const checkIn = await prisma.checkIn.findFirstOrThrow({ where: { volunteerId: volunteer.id } })
-    expect(checkIn.checkInAt.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T09:20:00`).getTime())
-    expect(checkIn.checkOutAt?.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T11:20:00`).getTime())
+    expect(checkIn.checkInAt.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T09:20:00Z`).getTime())
+    expect(checkIn.checkOutAt?.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T11:20:00Z`).getTime())
   })
 
   it("a leader-entered time directly overrides the resolved default", async () => {
@@ -317,8 +317,8 @@ describe("submitRosterAttendance", () => {
     )
 
     const checkIn = await prisma.checkIn.findFirstOrThrow({ where: { volunteerId: volunteer.id } })
-    expect(checkIn.checkInAt.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T08:15:00`).getTime())
-    expect(checkIn.checkOutAt?.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T10:15:00`).getTime())
+    expect(checkIn.checkInAt.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T08:15:00Z`).getTime())
+    expect(checkIn.checkOutAt?.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T10:15:00Z`).getTime())
   })
 })
 
@@ -342,8 +342,9 @@ describe("updateOwnCheckIn", () => {
     await captureRedirect(() => updateOwnCheckIn(checkIn.id, formData({ checkInTime: "09:10", checkOutTime: "11:10", notes: "actually arrived a bit late" })))
 
     const updated = await prisma.checkIn.findUniqueOrThrow({ where: { id: checkIn.id } })
-    expect(updated.checkInAt.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T09:10:00`).getTime())
-    expect(updated.checkOutAt?.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T11:10:00`).getTime())
+    // updateOwnCheckIn parses as explicit UTC (src/app/checkin/actions.ts) — matched with "Z" here.
+    expect(updated.checkInAt.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T09:10:00Z`).getTime())
+    expect(updated.checkOutAt?.getTime()).toBe(new Date(`${REFERENCE_DATE_STRING}T11:10:00Z`).getTime())
     expect(updated.notes).toBe("actually arrived a bit late")
   })
 
