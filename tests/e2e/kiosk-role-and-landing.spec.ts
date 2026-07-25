@@ -32,9 +32,9 @@ test("ADMIN lands on the Admin Console after sign-in", async ({ adminPage }) => 
   await expect(adminPage.getByRole("heading", { name: "Admin Console" })).toBeVisible()
 })
 
-// The homepage's flat link list (Dashboard/Check in/Admin Console/etc.) is the only app-wide
-// nav in this codebase — landing KIOSK on the Feed Board instead means it never renders, which
-// is what "no admin nav, no check-in nav" (V4.md's own phrasing) comes down to in practice.
+// src/app/NavBar.tsx (BUGS.md fix) is the app-wide nav now, rendered globally from the root
+// layout — it deliberately renders nothing at all for KIOSK, preserving the stripped-down,
+// nav-free layout this test already locked in before the nav existed everywhere else.
 test("KIOSK never sees the homepage's admin/check-in nav links, on the homepage or its own landing page", async ({ kioskPage }) => {
   await kioskPage.goto("/")
   await expect(kioskPage.getByRole("link", { name: "Admin Console" })).not.toBeVisible()

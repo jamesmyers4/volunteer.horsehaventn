@@ -1,13 +1,14 @@
-import Link from "next/link"
 import { redirect } from "next/navigation"
-import { Show, SignInButton, UserButton } from "@clerk/nextjs"
+import { Show, SignInButton } from "@clerk/nextjs"
 import { getCurrentVolunteer, landingRouteForRole } from "@/lib/auth"
 
-// V4.md Session 1: role-based landing route after sign-in, replacing the flat link list below
-// that every role used to see regardless of what they actually do first. Checked here (not
-// just left to client-side Show) so a signed-in visitor never even renders the full nav —
-// this is also the only "stripped-down layout" KIOSK needs, since this flat list is the only
-// app-wide nav that exists anywhere in this codebase today.
+// V4.md Session 1: role-based landing route after sign-in — ADMIN/VOLUNTEER/SHIFT_LEAD/KIOSK
+// never see this page's body at all past their first sign-in. GUEST is the one role with no
+// landing route (see landingRouteForRole), so it's the only signed-in role that actually lands
+// here. Nav + sign-out are handled globally by src/app/NavBar.tsx (rendered from the root
+// layout) — this page no longer duplicates that list (see BUGS.md: the duplicate list here used
+// to be the *only* nav in the app, which is what left every non-homepage page with no way to
+// navigate elsewhere or sign out once V4.md's redirect started sending people past this page).
 export default async function Home() {
   const volunteer = await getCurrentVolunteer()
   if (volunteer) {
@@ -27,60 +28,7 @@ export default async function Home() {
         <SignInButton mode="modal" forceRedirectUrl="/" />
       </Show>
       <Show when="signed-in">
-        <UserButton />
-        <div className="flex gap-4">
-          <Link href="/dashboard" className="text-sm underline">
-            Dashboard
-          </Link>
-          <Link href="/checkin" className="text-sm underline">
-            Check in
-          </Link>
-          <Link href="/checkin/roster" className="text-sm underline">
-            Shift Roster
-          </Link>
-          <Link href="/animals" className="text-sm underline">
-            Horses
-          </Link>
-          <Link href="/locations" className="text-sm underline">
-            Locations
-          </Link>
-          <Link href="/intake-groups" className="text-sm underline">
-            Intake Groups
-          </Link>
-          <Link href="/feed-board" className="text-sm underline">
-            Feed Board
-          </Link>
-          <Link href="/facility-tasks" className="text-sm underline">
-            Facility Tasks
-          </Link>
-          <Link href="/turnout-board" className="text-sm underline">
-            Turnout Board
-          </Link>
-          <Link href="/volunteers" className="text-sm underline">
-            Volunteers
-          </Link>
-          <Link href="/training" className="text-sm underline">
-            Training
-          </Link>
-          <Link href="/tiers" className="text-sm underline">
-            Tiers
-          </Link>
-          <Link href="/tags" className="text-sm underline">
-            Tags
-          </Link>
-          <Link href="/events" className="text-sm underline">
-            Events
-          </Link>
-          <Link href="/settings" className="text-sm underline">
-            Settings
-          </Link>
-          <Link href="/kiosk" className="text-sm underline">
-            Kiosk
-          </Link>
-          <Link href="/admin" className="text-sm underline">
-            Admin Console
-          </Link>
-        </div>
+        <p className="text-sm text-gray-500">Signed in. Use the nav above to get around.</p>
       </Show>
     </main>
   )
