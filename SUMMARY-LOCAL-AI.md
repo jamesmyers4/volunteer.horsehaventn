@@ -56,6 +56,7 @@ Each task is a small, independent, mechanical code change.
    dependency, e.g. "Tasks 2–7 call a helper Task 1 creates").
 7. After each task, run its **Success check** before moving to the next. If it fails, re-read
    and fix — don't proceed with a failing check.
+8. Never commit any code.   
 
 If a success-check command needs infrastructure you don't have (a DB, a running server), run
 the grep/tsc/lint parts only — they don't need it and still verify textual correctness.
