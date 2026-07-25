@@ -1,6 +1,7 @@
 import { prisma, withChangeLog } from "./prisma"
 import { getFarmSettings } from "./farmSettings"
 import { determineShiftTypeForNow } from "./shifts"
+import { Prisma } from "../generated/prisma/client"
 
 const DEFAULT_KIOSK_WORK_TYPE = "Regular Shift"
 
@@ -23,13 +24,27 @@ export async function maybeSetFirstShiftDate(volunteer: { id: string; firstShift
  * ChangeLog entirely, since `upsert` isn't one of the operations the extension hooks — only
  * `create` and `update` are). Every call site that used to call prisma.shift.upsert() directly
  * should call this instead.
+ *
+ * The find-then-create here is not atomic the way upsert's INSERT ... ON CONFLICT is, so two
+ * concurrent callers racing to create the same date+type occurrence can both pass the
+ * findUnique check before either creates. The @@unique([date, type]) constraint on Shift
+ * still prevents a duplicate row, but the loser's .create() throws P2002 instead of silently
+ * resolving to the winner's row like upsert would have — caught below and re-fetched so
+ * callers see the same "find or create" behavior either way.
  */
 export async function findOrCreateShift(changedBy: string, date: Date, type: "AM" | "PM") {
   const existing = await prisma.shift.findUnique({ where: { date_type: { date, type } } })
   if (existing) return existing
-  return withChangeLog(prisma, changedBy, "Shift occurrence created").shift.create({
-    data: { date, type }
-  })
+  try {
+    return await withChangeLog(prisma, changedBy, "Shift occurrence created").shift.create({
+      data: { date, type }
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return await prisma.shift.findUniqueOrThrow({ where: { date_type: { date, type } } })
+    }
+    throw error
+  }
 }
 
 // Matches the UTC-date-string convention already used by submitCheckIn (src/app/checkin/

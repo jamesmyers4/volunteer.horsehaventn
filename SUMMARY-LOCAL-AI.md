@@ -16,9 +16,11 @@ You are working in an existing Next.js 16 + Prisma 7 + TypeScript codebase calle
 
 If you cannot run a command listed in a success check (for example, no database is available in your environment), at minimum run the `grep` commands given — they don't need a database and will still tell you whether the edit is textually correct.
 
+**Lesson from a human review of Task 1's first pass, applies to any future task in a list like this:** when a task's "mechanical" change replaces a Prisma `upsert(...)` with something else (a helper, a `findUnique`+`create` pair, etc.), check whether the replacement is still atomic. `upsert` compiles to a single atomic `INSERT ... ON CONFLICT` — a separate find-then-create is two round trips, and two callers racing to create the same row (e.g. two people checking in for the same not-yet-existing shift occurrence at nearly the same moment) can both pass the "does it exist" check before either one creates, so the second `create()` throws a unique-constraint error (Prisma error code `P2002`) instead of quietly resolving to the same row like `upsert` did. This is exactly what happened in Task 1's original `findOrCreateShift` (now fixed — see that task below). Don't assume "small, independent, mechanical" means "safe to ignore concurrency" — a task instruction that removes an `upsert` should be treated as a signal to check this, not just copy the replacement code verbatim without thinking about it.
+
 ---
 
-## Task 1 — Add a `findOrCreateShift` helper to `src/lib/checkin.ts`
+## Task 1 — Add a `findOrCreateShift` helper to `src/lib/checkin.ts` (COMPLETED)
 
 **Why:** `Shift` is supposed to have every write tracked in the `ChangeLog` table (see `src/lib/prisma.ts`'s `trackedModels` array, which includes `"Shift"`). But every place in the code that creates a `Shift` row uses `prisma.shift.upsert(...)` directly, and Prisma's `withChangeLog` extension only watches the `create` and `update` operations — `upsert` is a different operation and is never seen by the extension. So new `Shift` rows are created with **no ChangeLog entry at all**. This task adds one small helper function that does the same job (find the row if it exists, create it through ChangeLog if it doesn't) but goes through `withChangeLog` correctly. Tasks 2–7 will then replace each of the 6 places that currently call `prisma.shift.upsert(...)` directly with a call to this new helper.
 
@@ -48,6 +50,10 @@ export async function maybeSetFirstShiftDate(volunteer: { id: string; firstShift
 }
 ```
 
+**UPDATE (2026-07-25): this task's original version had a concurrency bug, now fixed by a human reviewer directly in `src/lib/checkin.ts`. The block below reflects what's actually in the file now — if you're re-running this task from scratch, insert this corrected version, not a bare find-then-create.**
+
+The original version replaced `prisma.shift.upsert(...)` — which Postgres runs as one atomic `INSERT ... ON CONFLICT` — with a plain `findUnique` then `create`. That's not atomic: two callers racing to create the *same* date+type occurrence (e.g. the first two people checking in for AM on a given day, submitting within moments of each other) can both pass the `findUnique` check before either one creates, and the second `create()` then throws a Prisma `P2002` unique-constraint error against `Shift`'s `@@unique([date, type])`, instead of resolving to the same row the way `upsert` used to. The fix catches that specific error and re-fetches the row the other caller just created.
+
 **Change to make:** insert a new exported function immediately **after** `maybeSetFirstShiftDate` and **before** the `startOfDay` function that follows it. Add exactly this:
 
 ```ts
@@ -58,25 +64,46 @@ export async function maybeSetFirstShiftDate(volunteer: { id: string; firstShift
  * ChangeLog entirely, since `upsert` isn't one of the operations the extension hooks — only
  * `create` and `update` are). Every call site that used to call prisma.shift.upsert() directly
  * should call this instead.
+ *
+ * The find-then-create here is not atomic the way upsert's INSERT ... ON CONFLICT is, so two
+ * concurrent callers racing to create the same date+type occurrence can both pass the
+ * findUnique check before either creates. The @@unique([date, type]) constraint on Shift
+ * still prevents a duplicate row, but the loser's .create() throws P2002 instead of silently
+ * resolving to the winner's row like upsert would have — caught below and re-fetched so
+ * callers see the same "find or create" behavior either way.
  */
 export async function findOrCreateShift(changedBy: string, date: Date, type: "AM" | "PM") {
   const existing = await prisma.shift.findUnique({ where: { date_type: { date, type } } })
   if (existing) return existing
-  return withChangeLog(prisma, changedBy, "Shift occurrence created").shift.create({
-    data: { date, type }
-  })
+  try {
+    return await withChangeLog(prisma, changedBy, "Shift occurrence created").shift.create({
+      data: { date, type }
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return await prisma.shift.findUniqueOrThrow({ where: { date_type: { date, type } } })
+    }
+    throw error
+  }
 }
+```
+
+You also need one new import at the top of the file, alongside the existing ones:
+
+```ts
+import { Prisma } from "../generated/prisma/client"
 ```
 
 Do not change anything else in the file for this task — `startOfDay`, `performKioskToggle`, and everything else stay exactly as they are for now (later tasks will touch `performKioskToggle`).
 
-**Boundaries:** only add the new function shown above. Do not modify `maybeSetFirstShiftDate`, imports, or anything below the insertion point in this task.
+**Boundaries:** only add the new function and the one new import shown above. Do not modify `maybeSetFirstShiftDate` or anything below the insertion point in this task.
 
 **Success check:** run
 ```
 grep -n "export async function findOrCreateShift" src/lib/checkin.ts
+grep -n "PrismaClientKnownRequestError" src/lib/checkin.ts
 ```
-It should print exactly one line. Also run `npx tsc --noEmit` (or your project's typecheck command) — it should not report any new errors in `src/lib/checkin.ts`.
+Each should print at least one line. Also run `npx tsc --noEmit` (or your project's typecheck command) — it should not report any new errors in `src/lib/checkin.ts`.
 
 ---
 
