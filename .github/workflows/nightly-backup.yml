@@ -15,6 +15,7 @@ jobs:
           sudo apt-get install -y postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
         # awscli is not installed here: Ubuntu dropped the `awscli` apt package on the
         # noble (24.04) runner image ("Package 'awscli' has no installation candidate"),
         # but GitHub-hosted ubuntu-latest runners ship AWS CLI v2 preinstalled already,
@@ -24,7 +25,10 @@ jobs:
         # pg_dump refuses to dump from a server newer than itself ("aborting because of
         # server version mismatch"). The official PGDG apt repo (added via Postgres's own
         # setup script, not a hand-rolled apt-key add) provides postgresql-client-18 to
-        # match. Re-check this if Neon's Postgres version ever moves again.
+        # match, but the runner image's pre-installed postgresql-client-16 still wins on
+        # PATH by default via Debian's pg_wrapper - prepending 18's bin dir to $GITHUB_PATH
+        # (persists for every later step in this job) makes pg_dump/psql actually resolve
+        # to 18 instead. Re-check this if Neon's Postgres version ever moves again.
 
       - name: Neon keep-alive ping
         run: psql "${{ secrets.DATABASE_URL }}" -c "SELECT 1;"
