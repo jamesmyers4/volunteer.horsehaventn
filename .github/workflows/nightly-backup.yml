@@ -9,10 +9,14 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install postgresql-client and awscli
+      - name: Install postgresql-client
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client awscli
+          sudo apt-get install -y postgresql-client
+        # awscli is not installed here: Ubuntu dropped the `awscli` apt package on the
+        # noble (24.04) runner image ("Package 'awscli' has no installation candidate"),
+        # but GitHub-hosted ubuntu-latest runners ship AWS CLI v2 preinstalled already,
+        # so the `aws s3 cp` step below works with no extra install step at all.
 
       - name: Neon keep-alive ping
         run: psql "${{ secrets.DATABASE_URL }}" -c "SELECT 1;"
