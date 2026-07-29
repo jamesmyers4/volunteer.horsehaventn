@@ -20,7 +20,13 @@
     "test:unit": "dotenv -e .env.test -- vitest run",
     "test:unit:watch": "dotenv -e .env.test -- vitest",
     "test:e2e": "dotenv -e .env.test -e .env -- playwright test",
-    "test:all": "npm run test:db:reset && npm run test:unit && npm run test:e2e"
+    "test:all": "npm run test:db:reset && npm run test:unit && npm run test:e2e",
+    "drover:db:up": "docker compose -f docker-compose.drover.yml up -d --wait",
+    "drover:db:down": "docker compose -f docker-compose.drover.yml down -v",
+    "drover:db:migrate": "dotenv -e .env.drover -- prisma migrate deploy",
+    "drover:db:seed": "dotenv -e .env.drover -- tsx prisma/seed.ts",
+    "drover:db:reset": "npm run drover:db:up && npm run drover:db:migrate && npm run drover:db:seed",
+    "drover:seed-volunteer": "dotenv -e .env.drover -- tsx scripts/seed-drover-test-volunteer.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1088.0",

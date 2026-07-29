@@ -1,15 +1,16 @@
 import { config } from "dotenv";
 
-// Explicit .env.test, not the default .env — this script must only ever touch the
-// throwaway localhost:5433 test container (docker-compose.test.yml), never the real
-// Neon database .env points at.
-config({ path: ".env.test" });
+// Explicit .env.drover, not the default .env — this script must only ever touch the
+// throwaway localhost:5434 Drover container (docker-compose.drover.yml), dedicated to
+// Drover validation runs and fully separate from docker-compose.test.yml's own
+// vitest/Playwright E2E-suite container, never the real Neon database .env points at.
+config({ path: ".env.drover" });
 
 const databaseUrl = process.env.DATABASE_URL ?? "";
 if (!databaseUrl.includes("localhost")) {
   throw new Error(
     `Refusing to run: DATABASE_URL does not point at localhost (got "${databaseUrl}"). ` +
-      "This script must only run against the local test DB container, never production.",
+      "This script must only run against the local Drover DB container, never production.",
   );
 }
 
